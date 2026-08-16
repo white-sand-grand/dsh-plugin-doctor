@@ -1,0 +1,8 @@
+# Marks this directory as its own pnpm workspace root so installs never walk
+# up into the surrounding deepseek-harness checkout (the plugin stays a
+# standalone, independently installable package).
+packages:
+  - .
+allowBuilds:
+  # vitest's binary dependency; same deny-by-default posture as the harness.
+  esbuild: true
