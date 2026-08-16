@@ -83,8 +83,14 @@ export interface SimilarityReport {
   readonly irreplaceability: readonly Irreplaceability[]
 }
 
-/** Which decision branch `plugin_recommend` took. */
-export type RecommendBranch = 'recommend' | 'dedupe' | 'spec'
+/**
+ * Which decision branch `plugin_recommend` took: `recommend` — install
+ * suggestion; `dedupe` — keep/remove (user-confirmed or degraded); `integrate`
+ * — user chose consolidating duplicates into a new plugin (spec emitted);
+ * `spec` — user confirmed self-development (or the degraded no-interaction
+ * default); `none` — user declined self-development, competitors listed only.
+ */
+export type RecommendBranch = 'recommend' | 'dedupe' | 'integrate' | 'spec' | 'none'
 
 /** The `plugin_recommend` tool's structured result. */
 export interface RecommendResult {

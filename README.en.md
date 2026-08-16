@@ -13,8 +13,8 @@ A "doctor" for the DSH plugin ecosystem — inspired by Claude Code's `/doctor` 
 | You say | It does |
 | --- | --- |
 | "Find me a memory plugin" | Searches the community and returns the best matches, with install commands |
-| "Does this overlap with what I installed?" | Analyzes functional overlap and says plainly "keep A, remove B", with the removal command |
-| "I need X but can't find it" | Confirms the community has nothing, then generates a complete build-it-yourself spec |
+| "Does this overlap with what I installed?" | Lays out the overlap facts, then **asks how to proceed**: keep A remove B (with commands) / consolidate the duplicates into one new plugin you build (integration spec) / leave as-is |
+| "I need X but can't find it" | Lists near-miss competitors and what each lacks, **asks whether you want to self-develop**, and only after you confirm generates the build-it-yourself spec |
 
 ## Up and running in one minute
 
@@ -35,7 +35,7 @@ You don't need to memorize these — the agent chooses. Listed so you know the b
 
 - **`plugin_community_search`** — searches community plugins (GitHub repos tagged `dsh-plugin`); returns description, capability tags, stars, last update.
 - **`plugin_similarity_analyze`** — compares a set of plugins for functional overlap and finds redundancy groups.
-- **`plugin_recommend`** — combines the two above into a final decision (install this / remove that / build it yourself + spec).
+- **`plugin_recommend`** — combines the two above into a final decision. Anything that would emit a spec or remove a plugin is gated on your explicit choice (a choice card in the Web UI); non-interactive environments fall back to plain recommendations.
 
 ## Configuration (optional — defaults just work)
 

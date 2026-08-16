@@ -22,8 +22,11 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { CommunitySource } from './github.ts'
 import type { WebFetchLike } from './http.ts'
+import { askChoiceFactory } from './interaction.ts'
+import type { UserQuestionsLike } from './interaction.ts'
 import { readInventory, toPluginRows } from './inventory.ts'
 import { recommend } from './recommend.ts'
+import type { DecisionHooks } from './recommend.ts'
 import { analyze } from './similarity.ts'
 import type { CommunityPlugin, SearchFilters, SearchResult, SimilarityReport } from './types.ts'
 
@@ -102,7 +105,7 @@ interface SimilarityOutput {
 
 /** Wire payload of `plugin_recommend`. */
 interface RecommendOutput {
-  branch: 'recommend' | 'dedupe' | 'spec'
+  branch: 'recommend' | 'dedupe' | 'integrate' | 'spec' | 'none'
   report: string
   removals: string[]
 }
@@ -317,7 +320,9 @@ export function apply(ctx: Context, config: Config): void {
     description:
       'Recommend what to do about a plugin need: install the best community match; de-duplicate when '
       + 'matches overlap heavily with installed plugins (with removal commands); or, when the community '
-      + 'has nothing suitable, generate a Plugin Spec for building it. Returns a Markdown report.',
+      + 'has nothing suitable, generate a Plugin Spec for building it. Specs and removals are gated on '
+      + 'your explicit choice via an interactive prompt when the user-questions capability is available. '
+      + 'Returns a Markdown report.',
     parameters: {
       intent: {
         type: 'string',
@@ -334,7 +339,7 @@ export function apply(ctx: Context, config: Config): void {
         type: 'object',
         additionalProperties: false,
         properties: {
-          branch: { type: 'string', enum: ['recommend', 'dedupe', 'spec'], required: true },
+          branch: { type: 'string', enum: ['recommend', 'dedupe', 'integrate', 'spec', 'none'], required: true },
           report: { type: 'string', required: true },
           removals: { type: 'array', items: { type: 'string' } },
         },
@@ -346,7 +351,18 @@ export function apply(ctx: Context, config: Config): void {
       const profile = args.profile ?? 'web'
       const search = await searchWithToken(args.intent, {}, exec.signal)
       const inventory = await readInventory(profile)
-      const decision = recommend(args.intent, search, toPluginRows(inventory.names), current().similarityThreshold ?? DEFAULT_THRESHOLD, profile)
+      const hooks: DecisionHooks = {
+        askChoice: askChoiceFactory(ctx.get('userQuestions') as UserQuestionsLike | undefined),
+      }
+      const decision = await recommend(
+        args.intent,
+        search,
+        toPluginRows(inventory.names),
+        current().similarityThreshold ?? DEFAULT_THRESHOLD,
+        profile,
+        hooks,
+        exec.signal,
+      )
       const output: RecommendOutput = {
         branch: decision.branch,
         report: inventory.note === undefined ? decision.report : `> Local inventory: ${inventory.note}\n\n${decision.report}`,

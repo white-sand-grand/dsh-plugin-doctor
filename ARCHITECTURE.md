@@ -29,9 +29,16 @@ plugin_community_search ──► CommunitySource ──► GitHub Search API (t
 plugin_similarity_analyze ──► similarity.ts (pure functions)
 plugin_recommend ──► github.ts + inventory.ts ($DSH_HOME/profiles/<p>/package.json) ──► recommend.ts
                                                                                           ├─ branch 1: recommend
-                                                                                          ├─ branch 2: dedupe + removal command
-                                                                                          └─ branch 3: Plugin Spec (spec.ts)
+                                                                                          ├─ branch 2: dedupe ──► ask (keep / integrate / skip) ──┬─ keep: removal command
+                                                                                          │                                                    ├─ integrate: Integration Spec (spec.ts)
+                                                                                          │                                                    └─ skip: record only
+                                                                                          └─ branch 3: near-miss competitors ──► ask (build / abort) ──┬─ build: Plugin Spec (spec.ts)
+                                                                                                                                                       └─ abort: competitor list only
 ```
+
+## Interactive confirmation funnel (v0.2)
+
+Every spec-producing or removal-producing outcome goes through one prompt: `askChoiceFactory` (`interaction.ts`) wraps the DSH `ctx.userQuestions` seam — the same service `tool-ask-user` consumes — into a one-choice hook. The seam is detected per execution (`ctx.get('userQuestions')`), structural-typed locally so the plugin carries no extra peer dependency. Prompt dismissed, seam absent, or execution aborted → the hook resolves `undefined` and the caller degrades: branch 2 falls back to keep/remove plus a "say the word to consolidate" hint, branch 3 falls back to emitting the spec directly (the pre-v0.2 behavior). Tests inject stub hooks; `verify-boot.mjs` runs seam-less and thereby exercises the degraded paths.
 
 ## Secrets
 
