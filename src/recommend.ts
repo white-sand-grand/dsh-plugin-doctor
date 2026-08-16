@@ -12,7 +12,7 @@
  */
 
 import { analyze } from './similarity.ts'
-import { renderIntegrationSpec, renderPluginSpec, suggestPluginName } from './spec.ts'
+import { renderIntegrationSpec, renderPluginSpec } from './spec.ts'
 import type { AskChoiceHook } from './interaction.ts'
 import type { CommunityPlugin, RecommendResult, SearchResult } from './types.ts'
 
@@ -130,6 +130,8 @@ export async function recommend(
   return {
     branch: 'recommend',
     removals: [],
+    confirmed: false,
+    actions: [],
     report: header
       + `Community has well-matching plugins for **${intent.trim()}**:\n\n${lines.join('\n\n')}\n\n`
       + `Install the top pick:\n\n\`\`\`sh\ndsh plugin --profile ${profile} add ${best[0]!.plugin.installRef}\n\`\`\``,
@@ -198,6 +200,8 @@ async function dedupeBranch(
     return {
       branch: 'dedupe',
       removals: [],
+      confirmed: false,
+      actions: [],
       report: header + `Redundancy found — you chose to leave it as-is. No changes made.\n\n${facts}`,
     }
   }
@@ -215,23 +219,36 @@ async function dedupeBranch(
     return {
       branch: 'integrate',
       removals,
+      // Not execution-eligible: the consolidating replacement does not exist
+      // yet, so members must stay until it does.
+      confirmed: false,
+      actions: [],
       report: header + `You chose to consolidate.\n\n${facts}\n\n${renderIntegrationSpec(intent, clusterPlugins)}\n\n${removalBlock}`,
     }
   }
 
   // 'keep' confirmed by the user, or interaction unavailable → same outcome,
-  // differing only in whether the integration hint is appended.
+  // differing in the hint and in whether the host may execute the mutations.
   const removals = overlappingClusters.map(({ keeper }) => keeper.remove)
-  const commands = removals.map(name => `dsh plugin --profile ${profile} remove ${name}`).join('\n')
-  const installs = overlappingClusters
+  const keeperAdds = overlappingClusters
     .map(({ keeper }) => keeper.keep)
     .filter(name => !installedNames.has(name))
-    .map(name => `dsh plugin --profile ${profile} add ${combined.find(plugin => plugin.name === name)?.installRef ?? name}`)
-  const installBlock = installs.length === 0 ? '' : `\n\nThe keeper is not installed yet:\n\n\`\`\`sh\n${installs.join('\n')}\n\`\`\``
+    .map(name => combined.find(plugin => plugin.name === name)?.installRef ?? name)
+  const commands = removals.map(name => `dsh plugin --profile ${profile} remove ${name}`).join('\n')
+  const installBlock = keeperAdds.length === 0 ? '' : `\n\nThe keeper is not installed yet:\n\n\`\`\`sh\n${
+    keeperAdds.map(spec => `dsh plugin --profile ${profile} add ${spec}`).join('\n')
+  }\n\`\`\``
   const hint = choice === 'keep' ? '' : '\nTo consolidate these into one purpose-built plugin instead, just say so.\n'
   return {
     branch: 'dedupe',
     removals,
+    confirmed: choice === 'keep',
+    actions: choice === 'keep'
+      ? [
+          ...keeperAdds.map(spec => ({ kind: 'add' as const, spec })),
+          ...removals.map(name => ({ kind: 'remove' as const, spec: name })),
+        ]
+      : [],
     report: header
       + (choice === 'keep' ? 'Confirmed by you: de-duplicate.\n\n' : 'Community matches exist but overlap heavily with your setup. Recommendation: de-duplicate.\n\n')
       + `${facts}\n\nKeep the winner, remove the rest:\n\n\`\`\`sh\n${commands}\n\`\`\`${installBlock}${hint}`,
@@ -284,6 +301,8 @@ async function emptyCommunityBranch(
     return {
       branch: 'none',
       removals: [],
+      confirmed: false,
+      actions: [],
       report: header
         + `No community plugin matched **${intent.trim()}** — you chose not to self-develop.\n\n`
         + (competitorList.length > 0 ? `Closest competitors kept for reference:\n${competitorList.join('\n')}` : 'No near-miss competitors exist either.'),
@@ -298,8 +317,8 @@ async function emptyCommunityBranch(
   return {
     branch: 'spec',
     removals: [],
+    confirmed: false,
+    actions: [],
     report: header + `${prelude}\n\n${nearMissBlock}${spec}`,
   }
 }
-
-export { suggestPluginName }

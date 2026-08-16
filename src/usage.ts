@@ -15,9 +15,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { zstdDecompress } from 'node:zlib'
-
-const zstdDecompressAsync = promisify(zstdDecompress)
 
 /** Per-tool usage aggregate. */
 export interface ToolUsage {
@@ -37,6 +34,34 @@ export interface UsageAudit {
   readonly skipped: number
   /** Set when the sessions root is absent — no data yet, not an error. */
   readonly note?: string
+}
+
+/**
+ * Marker thrown when the running Node lacks `zstdDecompress` in `node:zlib`
+ * (added in Node 22.15). Resolved lazily per read, never at module load: a
+ * top-level named import would make the whole plugin — and with it the dsh
+ * plugin tree — fail to import on older Node (npx-launched dsh commonly runs
+ * one).
+ */
+const ZSTD_UNSUPPORTED = 'node:zlib zstd support unavailable on this Node runtime'
+
+/** Lazily resolved zstd decompressor; `undefined` on Node without zstd. */
+let zstdDecompressAsync: ((buffer: Buffer) => Promise<Buffer>) | undefined
+let zstdProbeDone = false
+
+/**
+ * Resolve the zstd decompressor once; safe on every Node version.
+ * @returns the promisified decompressor, or `undefined` when unsupported.
+ */
+async function resolveZstd(): Promise<((buffer: Buffer) => Promise<Buffer>) | undefined> {
+  if (!zstdProbeDone) {
+    zstdProbeDone = true
+    // A missing named export from a dynamic import is simply `undefined`;
+    // only a top-level static import would throw at link time.
+    const { zstdDecompress } = await import('node:zlib') as { zstdDecompress?: typeof import('node:zlib').zstdDecompress }
+    zstdDecompressAsync = typeof zstdDecompress === 'function' ? promisify(zstdDecompress) : undefined
+  }
+  return zstdDecompressAsync
 }
 
 /** One discovered session artifact. */
@@ -86,13 +111,17 @@ async function findArtifacts(sessionsRoot: string): Promise<Artifact[]> {
 }
 
 /**
- * Read one artifact's text: zstd-decompressed or plain UTF-8.
+ * Read one artifact's text: zstd-decompressed or plain UTF-8. Throws
+ * {@link ZSTD_UNSUPPORTED} for compressed artifacts on Node runtimes
+ * without `node:zlib` zstd support.
  * @param artifact - the artifact to read.
  * @returns decoded text lines.
  */
 async function readArtifact(artifact: Artifact): Promise<string> {
   if (!artifact.compressed) return readFile(artifact.path, 'utf8')
-  return (await zstdDecompressAsync(await readFile(artifact.path))).toString('utf8')
+  const decompress = await resolveZstd()
+  if (decompress === undefined) throw new Error(ZSTD_UNSUPPORTED)
+  return (await decompress(await readFile(artifact.path))).toString('utf8')
 }
 
 /**
@@ -107,11 +136,13 @@ export async function auditToolUsage(sessionsRoot: string): Promise<UsageAudit> 
   const calls = new Map<string, { count: number; sessions: number; lastMtime: number }>()
   let scanned = 0
   let skipped = 0
+  let zstdUnsupported = 0
   for (const artifact of artifacts) {
     let text: string
     try {
       text = await readArtifact(artifact)
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === ZSTD_UNSUPPORTED) zstdUnsupported++
       skipped++
       continue
     }
@@ -139,7 +170,10 @@ export async function auditToolUsage(sessionsRoot: string): Promise<UsageAudit> 
   const tools: ToolUsage[] = [...calls.entries()]
     .map(([tool, entry]) => ({ tool, calls: entry.count, sessions: entry.sessions, lastUsed: new Date(entry.lastMtime).toISOString() }))
     .sort((x, y) => y.calls - x.calls || x.tool.localeCompare(y.tool))
-  return { tools, sessionsScanned: scanned, skipped }
+  const note = zstdUnsupported > 0
+    ? `${zstdUnsupported} zstd-compressed session log${zstdUnsupported === 1 ? '' : 's'} skipped: this Node runtime lacks node:zlib zstd support (Node ≥22.15 enables usage data)`
+    : undefined
+  return { tools, sessionsScanned: scanned, skipped, ...(note === undefined ? {} : { note }) }
 }
 
 /**

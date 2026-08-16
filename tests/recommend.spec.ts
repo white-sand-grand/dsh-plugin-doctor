@@ -71,6 +71,26 @@ describe('recommend: dedupe branch', () => {
     expect(result.report).not.toContain('To consolidate')
   })
 
+  it("asked 'keep': carries execution-eligible actions (install keeper, remove duplicate)", async () => {
+    const result = await recommend(MEMORY_INTENT, { plugins: [memoryCandidate, memoryClone] }, installed, 0.8, 'web', { askChoice: answering('keep') })
+    expect(result.confirmed).toBe(true)
+    expect(result.actions).toEqual([
+      { kind: 'add', spec: 'github:community/dsh-plugin-memory' },
+      { kind: 'remove', spec: 'dsh-plugin-agent-memory' },
+    ])
+  })
+
+  it('degraded and non-keep outcomes are never execution-eligible', async () => {
+    const degraded = await recommend(MEMORY_INTENT, { plugins: [memoryCandidate, memoryClone] }, installed, 0.8, 'web')
+    expect(degraded.confirmed).toBe(false)
+    expect(degraded.actions).toEqual([])
+    for (const key of ['skip', 'integrate'] as const) {
+      const outcome = await recommend(MEMORY_INTENT, { plugins: [memoryCandidate, memoryClone] }, installed, 0.8, 'web', { askChoice: answering(key) })
+      expect(outcome.confirmed).toBe(false)
+      expect(outcome.actions).toEqual([])
+    }
+  })
+
   it("asked 'integrate': emits the integration spec and removes installed members", async () => {
     const result = await recommend(MEMORY_INTENT, { plugins: [memoryCandidate, memoryClone] }, installed, 0.8, 'web', { askChoice: answering('integrate') })
     expect(result.branch).toBe('integrate')

@@ -17,7 +17,7 @@ import type { CommunityPlugin } from './types.ts'
  * topic.
  * @param intent - natural-language requirement.
  */
-export function suggestPluginName(intent: string): string {
+function suggestPluginName(intent: string): string {
   const words = intent.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/)
     .filter(word => word.length > 1 && !['i', 'need', 'want', 'a', 'an', 'the', 'plugin', 'that', 'can', 'for', 'dsh'].includes(word))
   const stem = words.slice(0, 3).join('-')
@@ -28,7 +28,7 @@ export function suggestPluginName(intent: string): string {
  * Derive plausible capability tags from the intent's salient words.
  * @param intent - natural-language requirement.
  */
-export function suggestCapabilities(intent: string): string[] {
+function suggestCapabilities(intent: string): string[] {
   const words = intent.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter(word => word.length > 2)
   return [...new Set(words)].slice(0, 5)
 }

@@ -38,7 +38,7 @@ You don't need to memorize these — the agent chooses. Listed so you know the b
 - **`plugin_community_search`** — searches community plugins (GitHub repos tagged `dsh-plugin`); returns description, capability tags, stars, last update.
 - **`plugin_similarity_analyze`** — compares a set of plugins for functional overlap and finds redundancy groups.
 - **`plugin_recommend`** — combines the two above into a final decision. Anything that would emit a spec or remove a plugin is gated on your explicit choice (a choice card in the Web UI); non-interactive environments fall back to plain recommendations.
-- **`plugin_usage_audit`** — reads DSH's local session logs (zstd-compressed JSONL) and reports how often each tool was really invoked and when. Tools are attributed to plugins via each package's `dsh.tools` declaration; a declared plugin with zero calls is flagged as removable. Corrupt old logs are skipped, torn logs are salvaged up to their last complete frame, and the audit never aborts on a single bad artifact.
+- **`plugin_usage_audit`** — reads DSH's local session logs (zstd-compressed JSONL) and reports how often each tool was really invoked and when. Tools are attributed to plugins via each package's `dsh.tools` declaration; a declared plugin with zero calls is flagged as removable. Corrupt old logs are skipped, torn logs are salvaged up to their last complete frame, and the audit never aborts on a single bad artifact. **Compatibility**: decompression needs `node:zlib` zstd support (Node ≥22.15). On older Node — common when dsh is launched via `npx` — the plugin still loads and every other tool works; the usage audit degrades and says why in its report.
 - **`plugin_landscape`** — the big picture: a similarity relation graph (Mermaid source block; the same report carries a text fallback for surfaces that don't render Mermaid) plus four tiers — `core` (heavy use, or used and hard to replace), `active` (some use), `idle` (declared tools, zero calls), `review` (zero calls plus stale or redundant). With an optional intent, community matches join the graph as dashed nodes.
 
 ## Configuration (optional — defaults just work)
@@ -51,7 +51,8 @@ Every setting has a sensible default; feel free to skip this section. To change 
 | `githubToken` | none | Paste the token literally (not recommended in files — prefer the env-var way above) |
 | `similarityThreshold` | `0.8` | How much overlap counts as "redundant". Lower it to get more aggressive dedupe advice |
 | `cacheTtlMinutes` | `30` | How long search results are cached, to spare the GitHub quota |
-| `enableRegistryFallback` | `true` | Whether to fall back to a built-in static plugin list when GitHub is unreachable |
+| `enableRegistryFallback` | `true` | Whether to fall back to third-party registries when GitHub is unreachable (live page scrape first, built-in static snapshot last) |
+| `allowExecuteActions` | `false` | Whether confirmed add/remove actions are **actually executed** via the `dsh plugin` CLI instead of only printed. Requires two conditions: this switch on **and** your explicit confirmation in the interactive prompt; degraded non-interactive paths never execute. The server process needs `dsh` on PATH |
 
 **Adding a token** (recommended): GitHub → Settings → Developer settings → Personal access tokens, generate one (no scopes needed), then:
 
@@ -62,11 +63,12 @@ chmod 600 ~/.dsh/.credentials.yaml
 
 ## What happens on bad networks / rate limits
 
-Nothing crashes. The plugin falls back in three layers, in order:
+Nothing crashes. The plugin falls back in four layers, in order:
 
 1. Normal: live GitHub queries (cached for 30 minutes).
 2. Rate-limited or unreachable: serve the last cached results.
-3. No cache at all: serve a built-in snapshot of the community list (from dshplugin.world / dsh.pub).
+3. No cache at all: scrape the third-party registry pages (dshplugin.world, dsh.pub) for plugin repository links.
+4. Registries unreachable too: serve the built-in static snapshot of the community list.
 
 Whichever layer serves you, the answer says so — seeing a "degraded" note is informational, not a failure, and DSH itself is never affected.
 

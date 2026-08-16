@@ -31,6 +31,13 @@ export interface Config {
     cacheTtlMinutes?: number;
     /** Serve the built-in third-party registry snapshot when GitHub is unavailable. */
     enableRegistryFallback?: boolean;
+    /**
+     * Execute confirmed install/remove actions via the `dsh plugin` CLI instead
+     * of only printing commands. Off by default; when on, execution still
+     * requires the user's explicit interactive confirmation (degraded,
+     * non-interactive paths never execute).
+     */
+    allowExecuteActions?: boolean;
 }
 export declare const Config: z<Config>;
 /**

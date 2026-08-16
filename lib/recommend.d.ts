@@ -10,7 +10,6 @@
  *
  * @module dsh-plugin-doctor/recommend
  */
-import { suggestPluginName } from './spec.ts';
 import type { AskChoiceHook } from './interaction.ts';
 import type { CommunityPlugin, RecommendResult, SearchResult } from './types.ts';
 /** Interaction hooks; omit to force the degraded (non-interactive) paths. */
@@ -29,4 +28,3 @@ export interface DecisionHooks {
  * @param signal - cancellation signal forwarded to user prompts.
  */
 export declare function recommend(intent: string, search: SearchResult, installedPlugins: readonly CommunityPlugin[], threshold: number, profile: string, hooks?: DecisionHooks, signal?: AbortSignal | undefined): Promise<RecommendResult>;
-export { suggestPluginName };

@@ -15,6 +15,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -56,6 +57,13 @@ export interface Config {
   cacheTtlMinutes?: number
   /** Serve the built-in third-party registry snapshot when GitHub is unavailable. */
   enableRegistryFallback?: boolean
+  /**
+   * Execute confirmed install/remove actions via the `dsh plugin` CLI instead
+   * of only printing commands. Off by default; when on, execution still
+   * requires the user's explicit interactive confirmation (degraded,
+   * non-interactive paths never execute).
+   */
+  allowExecuteActions?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -64,6 +72,7 @@ export const Config: z<Config> = z.object({
   similarityThreshold: z.number().min(0).max(1).default(DEFAULT_THRESHOLD),
   cacheTtlMinutes: z.number().step(1).min(1).default(DEFAULT_TTL_MINUTES),
   enableRegistryFallback: z.boolean().default(true),
+  allowExecuteActions: z.boolean().default(false),
 })
 
 /** Settings namespace carrying the plugin doctor's user-tunable section. */
@@ -112,6 +121,41 @@ interface RecommendOutput {
   branch: 'recommend' | 'dedupe' | 'integrate' | 'spec' | 'none'
   report: string
   removals: string[]
+}
+
+/** One `dsh plugin` invocation outcome for the execution log. */
+interface ActionOutcome {
+  readonly ok: boolean
+  readonly detail: string
+}
+
+/**
+ * Run one `dsh plugin --profile <p> <add|remove> <spec>` via the CLI. The
+ * `dsh` binary must be on the server process's PATH; a missing binary or
+ * non-zero exit is reported, never thrown — the surrounding report stays
+ * intact either way.
+ * @param profile - target profile.
+ * @param action - the confirmed mutation to run.
+ */
+function runDshPlugin(profile: string, action: { kind: 'add' | 'remove'; spec: string }): ActionOutcome {
+  const result = spawnSync('dsh', ['plugin', '--profile', profile, action.kind, action.spec], {
+    encoding: 'utf8',
+    timeout: 180_000,
+    // Windows resolves dsh through a shim that spawn() refuses without a
+    // shell since the CVE-2024-27980 hardening (same choice as dsh's own
+    // plugin forwarder).
+    shell: process.platform === 'win32',
+  })
+  if (result.error !== undefined) {
+    const code = (result.error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return { ok: false, detail: 'dsh not found on the server PATH' }
+    if (code === 'ETIMEDOUT') return { ok: false, detail: 'timed out after 180s' }
+    return { ok: false, detail: result.error.message }
+  }
+  if (result.status !== 0) {
+    return { ok: false, detail: `exit ${result.status}: ${(result.stderr ?? '').trim().split('\n').slice(-2).join(' ').slice(0, 160)}` }
+  }
+  return { ok: true, detail: '' }
 }
 
 /** Wire payload of `plugin_usage_audit`. */
@@ -381,9 +425,18 @@ export function apply(ctx: Context, config: Config): void {
         hooks,
         exec.signal,
       )
+      let report = inventory.note === undefined ? decision.report : `> Local inventory: ${inventory.note}\n\n${decision.report}`
+      const executed: string[] = []
+      if (current().allowExecuteActions === true && decision.confirmed && decision.actions.length > 0) {
+        for (const action of decision.actions) {
+          const outcome = runDshPlugin(profile, action)
+          executed.push(`${outcome.ok ? 'done' : 'FAILED'}: dsh plugin --profile ${profile} ${action.kind} ${action.spec}${outcome.ok ? '' : ` — ${outcome.detail}`}`)
+        }
+        report += `\n\nExecuted (allowExecuteActions on, confirmed by you):\n${executed.map(line => `- ${line}`).join('\n')}`
+      }
       const output: RecommendOutput = {
         branch: decision.branch,
-        report: inventory.note === undefined ? decision.report : `> Local inventory: ${inventory.note}\n\n${decision.report}`,
+        report,
         removals: [...decision.removals],
       }
       return output
@@ -431,7 +484,7 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => [{ type: 'text', text: (value as UsageAuditOutput).report }],
     },
     isConcurrencySafe: () => true,
-    async execute(args, exec) {
+    async execute(args) {
       const profile = args.profile ?? 'web'
       const inventory = await readInventory(profile)
       const audit = await auditToolUsage(join(resolveDshHome(), 'sessions'))

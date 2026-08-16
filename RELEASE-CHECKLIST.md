@@ -7,6 +7,7 @@ Confirm every item before publishing a version.
 - [ ] No secret is hardcoded: token only via `githubTokenEnv` credential reference (default `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN`) or the `role('secret')` literal field; grep the diff for token-like strings.
 - [ ] Every external API failure path degrades (GitHub → stale cache → registry snapshot) and is reported in tool output; no error thrown into the DSH host (`tests/degradation.spec.ts` covers all three).
 - [ ] Peer ranges still cover the newest published DSH (`@deepseek-ai/dsh-tools`, `dsh-settings`, `dsh-credentials`, `cordis`); `verify-boot.mjs` ran against that version.
+- [ ] The plugin module imports on Node without `node:zlib` zstd (the npx + Node <22.15 path): `npx -y -p node@20 node -e "import('./lib/index.js').then(()=>console.log('ok'))"` from the package root prints `ok`.
 - [ ] README states "Compatible with DSH v0.1.x (developer preview)" and the Web-UI settings-card limitation.
 - [ ] Repository carries the `dsh-plugin` GitHub topic so the plugin is discoverable by this tool itself.
 - [ ] `cordis.patch.yml` defaults match the documented table in README.

@@ -34,9 +34,18 @@ export declare class CommunitySource {
     search(intent: string, filters: SearchFilters, signal: AbortSignal | undefined): Promise<SearchResult>;
     /**
      * Fetch (or serve from cache) the full topic listing with README excerpts.
-     * Errors step down: live API → stale cache → registry snapshot.
+     * Errors step down: live API → stale cache → live registry pages → built-in
+     * registry snapshot.
      */
     private listing;
+    /**
+     * Scrape the third-party plugin registries (dshplugin.world, dsh.pub) for
+     * GitHub repository references. Returns `undefined` when every page fails;
+     * an empty array means the pages loaded but exposed no repositories — the
+     * caller then falls through to the static snapshot.
+     * @param signal - cancellation signal from the tool execution.
+     */
+    private fetchRegistries;
     /**
      * Query the GitHub Search API for the topic and enrich each hit with its
      * README head. Per-repository README failures degrade to the repo description.
@@ -45,9 +54,3 @@ export declare class CommunitySource {
     /** First {@link README_EXCERPT_CHARS} characters of the repository README. */
     private readmeExcerpt;
 }
-/**
- * Lowercase word tokens of an intent, minus stopwords; also keeps hyphenated
- * compound fragments so "sandbox approval" matches `sandbox-approval`.
- * @param intent - natural-language text.
- */
-export declare function tokenizeIntent(intent: string): string[];

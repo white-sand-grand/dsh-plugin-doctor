@@ -14,6 +14,9 @@ import type { CommunityPlugin, SearchFilters, SearchResult } from './types.ts'
 /** GitHub Search API topic every discovery query narrows to. */
 const DSH_PLUGIN_TOPIC = 'dsh-plugin'
 
+/** Third-party registry pages scraped in the degradation chain. */
+const REGISTRY_URLS = ['https://dshplugin.world/', 'https://dsh.pub/en/plugins/'] as const
+
 /** README excerpt length kept for similarity scoring. */
 const README_EXCERPT_CHARS = 500
 
@@ -133,7 +136,8 @@ export class CommunitySource {
 
   /**
    * Fetch (or serve from cache) the full topic listing with README excerpts.
-   * Errors step down: live API → stale cache → registry snapshot.
+   * Errors step down: live API → stale cache → live registry pages → built-in
+   * registry snapshot.
    */
   private async listing(signal: AbortSignal | undefined): Promise<{ plugins: readonly CommunityPlugin[]; degraded?: string }> {
     const fresh = this.cache !== undefined && Date.now() - this.cache.fetchedAt < this.ttlMinutes * 60_000
@@ -143,14 +147,57 @@ export class CommunitySource {
       this.cache = { fetchedAt: Date.now(), plugins }
       return { plugins }
     } catch (error) {
+      const cause = errorMessage(error)
       if (this.cache !== undefined) {
-        return { plugins: this.cache.plugins, degraded: `GitHub API unavailable (${errorMessage(error)}); serving stale cache` }
+        return { plugins: this.cache.plugins, degraded: `GitHub API unavailable (${cause}); serving stale cache` }
+      }
+      const live = await this.fetchRegistries(signal)
+      if (live !== undefined && live.length > 0) {
+        return { plugins: live, degraded: `GitHub API unavailable (${cause}); serving live third-party registry data` }
       }
       return {
         plugins: REGISTRY_SNAPSHOT,
-        degraded: `GitHub API unavailable (${errorMessage(error)}); serving built-in registry snapshot`,
+        degraded: `GitHub API unavailable (${cause}); serving built-in registry snapshot`,
       }
     }
+  }
+
+  /**
+   * Scrape the third-party plugin registries (dshplugin.world, dsh.pub) for
+   * GitHub repository references. Returns `undefined` when every page fails;
+   * an empty array means the pages loaded but exposed no repositories — the
+   * caller then falls through to the static snapshot.
+   * @param signal - cancellation signal from the tool execution.
+   */
+  private async fetchRegistries(signal: AbortSignal | undefined): Promise<CommunityPlugin[] | undefined> {
+    const plugins = new Map<string, CommunityPlugin>()
+    let anyPageLoaded = false
+    for (const url of REGISTRY_URLS) {
+      try {
+        const { status, text } = await fetchText(this.deps, url, signal, 'text/html')
+        if (!(status >= 200 && status < 300)) continue
+        anyPageLoaded = true
+        for (const match of text.matchAll(/github\.com\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/([A-Za-z0-9][A-Za-z0-9_.-]*)/g)) {
+          const repo = `${match[1]}/${match[2]}`
+          if (plugins.has(repo)) continue
+          plugins.set(repo, {
+            name: match[2]!,
+            repo,
+            installRef: `github:${repo}`,
+            description: `Listed on ${new URL(url).hostname}`,
+            readmeExcerpt: '',
+            capabilities: [],
+            dependencies: [],
+            stars: 0,
+            updatedAt: '',
+            source: 'registry',
+          })
+        }
+      } catch {
+        // One unreachable registry must not block the other or the fallback.
+      }
+    }
+    return anyPageLoaded ? [...plugins.values()] : undefined
   }
 
   /**
@@ -205,7 +252,7 @@ export class CommunitySource {
  * compound fragments so "sandbox approval" matches `sandbox-approval`.
  * @param intent - natural-language text.
  */
-export function tokenizeIntent(intent: string): string[] {
+function tokenizeIntent(intent: string): string[] {
   const stopwords = new Set(['a', 'an', 'the', 'i', 'need', 'want', 'plugin', 'for', 'that', 'can', 'to', 'of', 'and', 'with', 'me', 'my', 'dsh'])
   return intent
     .toLowerCase()

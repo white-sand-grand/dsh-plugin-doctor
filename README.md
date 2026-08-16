@@ -38,7 +38,7 @@ Agent 会自动调用插件完成搜索、比对和建议，你只需要看结�
 - **`plugin_community_search`**：搜索社区插件（GitHub 上带 `dsh-plugin` 标签的仓库），返回简介、功能标签、star 数、更新时间。
 - **`plugin_similarity_analyze`**：把若干插件放在一起比对功能重叠度，找出"重复组"。
 - **`plugin_recommend`**：综合以上两步给出最终建议。凡是涉及"生成设计书"或"卸载插件"的结论，都会先弹出选项让你确认（Web UI 里是选择题卡片）；不方便交互的环境自动退回直接给建议的模式。
-- **`plugin_usage_audit`**：读取 DSH 本地会话日志（zstd 压缩的 JSONL），统计每个工具被真实调用多少次、最近什么时候用的。插件归属按各包 `package.json` 里声明的 `dsh.tools` 字段识别——声明过工具的插件若零调用，直接标成"可以卸载"。损坏的旧日志自动跳过，断尾日志能救多少算多少，审计永不因单条日志失败而中断。
+- **`plugin_usage_audit`**：读取 DSH 本地会话日志（zstd 压缩的 JSONL），统计每个工具被真实调用多少次、最近什么时候用的。插件归属按各包 `package.json` 里声明的 `dsh.tools` 字段识别——声明过工具的插件若零调用，直接标成"可以卸载"。损坏的旧日志自动跳过，断尾日志能救多少算多少，审计永不因单条日志失败而中断。**兼容性**：会话日志解压需要 Node ≥22.15 的 `node:zlib` zstd 支持；更老的 Node（如 npx 拉起 dsh 时的 Node 20）上插件照常加载、其他工具不受影响，使用审计会自动降级并在报告里注明原因。
 - **`plugin_landscape`**：插件全景图——相似度关系图（Mermaid 源码块；环境不渲染 Mermaid 时读同报告里的文本退化视图）+ 四档分层：`core`（重度使用或"在用且难替代"）、`active`（有一定使用）、`idle`（声明了工具但零调用）、`review`（零调用且更新超一年或与其他插件冗余）。带一个可选意图参数时，社区匹配项会以虚线节点加入图谱一并对比。
 
 ## 配置（可选，不配也能用）
@@ -51,7 +51,8 @@ Agent 会自动调用插件完成搜索、比对和建议，你只需要看结�
 | `githubToken` | 无 | 直接填令牌（不推荐写进文件，优先用上面的环境变量方式） |
 | `similarityThreshold` | `0.8` | 重叠度超过多少算"功能重复"。调低会更激进地建议去重 |
 | `cacheTtlMinutes` | `30` | 搜索结果缓存多久，避免反复请求 GitHub |
-| `enableRegistryFallback` | `true` | GitHub 彻底连不上时，是否用内置的静态插件清单兜底 |
+| `enableRegistryFallback` | `true` | GitHub 彻底连不上时，是否用第三方 registry（实时抓取，失败再退内置静态清单）兜底 |
+| `allowExecuteActions` | `false` | 确认后是否**真的执行**安装/卸载（调用 `dsh plugin`），而不是只给命令。需双重条件：此开关打开 **且** 你在交互弹窗里明确确认；非交互降级路径永远不会执行。执行要求服务进程 PATH 上有 `dsh` 命令 |
 
 **令牌怎么配**（推荐方式）：去 GitHub → Settings → Developer settings → Personal access tokens 生成一个（不用勾任何权限），然后：
 
@@ -62,11 +63,12 @@ chmod 600 ~/.dsh/.credentials.yaml
 
 ## 网络不好 / 被限流时会怎样
 
-不用担心崩掉，插件有三层退路，按顺序降级：
+不用担心崩掉，插件有四层退路，按顺序降级：
 
 1. 正常情况：实时查 GitHub（结果缓存 30 分钟）。
 2. GitHub 限流或连不上：先用上次缓存的结果。
-3. 连缓存都没有：用内置的社区插件清单（来自 dshplugin.world / dsh.pub 的快照）。
+3. 连缓存都没有：实时抓取第三方 registry 页面（dshplugin.world、dsh.pub）上的插件仓库链接。
+4. registry 也不可达：用内置的静态插件清单快照。
 
 无论走到哪一层，回复里都会注明当前用的是哪层数据——你看到"降级"字样只是提示，不是故障，DSH 本体不受任何影响。
 

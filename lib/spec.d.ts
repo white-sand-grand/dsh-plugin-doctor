@@ -9,19 +9,6 @@
  */
 import type { CommunityPlugin } from './types.ts';
 /**
- * Suggest a package name for the missing plugin from the user intent.
- * Derives the most prominent hyphen-joinable tokens, else falls back to a
- * generic stem, always under the `dsh-plugin-` prefix used by the community
- * topic.
- * @param intent - natural-language requirement.
- */
-export declare function suggestPluginName(intent: string): string;
-/**
- * Derive plausible capability tags from the intent's salient words.
- * @param intent - natural-language requirement.
- */
-export declare function suggestCapabilities(intent: string): string[];
-/**
  * Render the full Plugin Spec as Markdown.
  * @param intent - the user requirement the spec answers.
  * @param comparedAgainst - community plugins already considered and rejected, cited for differentiation.

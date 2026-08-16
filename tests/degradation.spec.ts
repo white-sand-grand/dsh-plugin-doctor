@@ -81,6 +81,31 @@ describe('CommunitySource degradation chain', () => {
     expect(result.degraded).toContain('registry snapshot')
   })
 
+  it('prefers live registry pages over the static snapshot when GitHub is down', async () => {
+    stubFetch(url => {
+      if (url.includes('/search/repositories')) return { status: 403, body: 'rate limit' }
+      if (url.includes('dshplugin.world')) {
+        return { status: 200, body: '<main><a href="https://github.com/community/dsh-plugin-live-one">one</a></main>' }
+      }
+      if (url.includes('dsh.pub')) {
+        return { status: 200, body: '<a href="https://github.com/community/dsh-plugin-live-two"></a><a href="https://github.com/community/dsh-plugin-live-one"></a>' }
+      }
+      return { status: 500, body: '' }
+    })
+    const source = new CommunitySource({}, 30)
+    const result = await source.search('live', {}, undefined)
+    expect(result.degraded).toContain('live third-party registry data')
+    expect(result.plugins.map(plugin => plugin.name).sort()).toEqual(['dsh-plugin-live-one', 'dsh-plugin-live-two'])
+    expect(result.plugins.every(plugin => plugin.source === 'registry' && plugin.repo.startsWith('community/'))).toBe(true)
+  })
+
+  it('falls through to the static snapshot when registry pages carry no repositories', async () => {
+    stubFetch(url => (url.includes('/search/repositories') ? { status: 403, body: 'rate limit' } : { status: 200, body: '<p>no links here</p>' }))
+    const source = new CommunitySource({}, 30)
+    const result = await source.search('memory', {}, undefined)
+    expect(result.degraded).toContain('registry snapshot')
+  })
+
   it('never throws on network errors', async () => {
     stubFetch(() => Promise.reject(new Error('network down')))
     const source = new CommunitySource({}, 30)

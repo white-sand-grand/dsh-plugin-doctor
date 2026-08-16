@@ -10,6 +10,8 @@
     "strict": true,
     "noImplicitAny": true,
     "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "exactOptionalPropertyTypes": false

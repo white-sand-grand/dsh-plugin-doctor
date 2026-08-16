@@ -82,6 +82,12 @@ export interface SimilarityReport {
  * default); `none` — user declined self-development, competitors listed only.
  */
 export type RecommendBranch = 'recommend' | 'dedupe' | 'integrate' | 'spec' | 'none';
+/** One profile mutation the decision proposes, executable after confirmation. */
+export interface PluginAction {
+    readonly kind: 'add' | 'remove';
+    /** Package name (remove) or install reference (add). */
+    readonly spec: string;
+}
 /** The `plugin_recommend` tool's structured result. */
 export interface RecommendResult {
     readonly branch: RecommendBranch;
@@ -89,4 +95,11 @@ export interface RecommendResult {
     readonly report: string;
     /** Plugins suggested for removal in the `dedupe` branch. */
     readonly removals: readonly string[];
+    /**
+     * True only when the outcome was picked through the interactive prompt —
+     * the sole state in which {@link actions} may be executed by the host.
+     */
+    readonly confirmed: boolean;
+    /** Mutations backing the confirmed outcome; empty unless confirmed. */
+    readonly actions: readonly PluginAction[];
 }
