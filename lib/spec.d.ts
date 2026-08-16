@@ -5,7 +5,7 @@
  * (Cordis `apply(ctx, config)` + `defineTool`), not the lifecycle-hook sketch
  * in the original feature request.
  *
- * @module dsh-plugin-recommender/spec
+ * @module dsh-plugin-doctor/spec
  */
 import type { CommunityPlugin } from './types.ts';
 /**

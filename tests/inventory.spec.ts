@@ -10,12 +10,12 @@ describe('inventory', () => {
     await mkdir(join(home, 'profiles', 'web'), { recursive: true })
     await writeFile(
       join(home, 'profiles', 'web', 'package.json'),
-      JSON.stringify({ dsh: { profile: { bundles: ['dsh-plugin-recommender'] } }, dependencies: { 'some-lib': '1.0.0' } }),
+      JSON.stringify({ dsh: { profile: { bundles: ['dsh-plugin-doctor'] } }, dependencies: { 'some-lib': '1.0.0' } }),
       'utf8',
     )
     const inventory = await readInventory('web', { DSH_HOME: home })
     expect(inventory.note).toBeUndefined()
-    expect(inventory.names).toEqual(['dsh-plugin-recommender'])
+    expect(inventory.names).toEqual(['dsh-plugin-doctor'])
   })
 
   it('reports a missing profile as an empty list with a note, not an error', async () => {

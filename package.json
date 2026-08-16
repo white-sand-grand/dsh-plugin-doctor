@@ -1,7 +1,7 @@
 {
-  "name": "dsh-plugin-recommender",
+  "name": "dsh-plugin-doctor",
   "version": "0.1.0",
-  "description": "DSH plugin recommender: community search, similarity analysis, and install/dedupe/build-it-yourself decisions for the dsh-plugin ecosystem.",
+  "description": "DSH plugin doctor: community search, similarity analysis, and install/dedupe/build-it-yourself decisions for the dsh-plugin ecosystem.",
   "type": "module",
   "license": "MIT",
   "main": "lib/index.js",
@@ -28,7 +28,7 @@
     "dsh",
     "deepseek-harness",
     "dsh-plugin",
-    "recommender"
+    "doctor"
   ],
   "dsh": {
     "bundle": {

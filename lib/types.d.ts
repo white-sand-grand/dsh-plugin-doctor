@@ -1,11 +1,11 @@
 /**
- * Shared vocabulary of the plugin-recommender tools.
+ * Shared vocabulary of the plugin-doctor tools.
  *
- * @module dsh-plugin-recommender/types
+ * @module dsh-plugin-doctor/types
  */
 /** Where a community plugin record came from; drives degradation reporting. */
 export type PluginSource = 'github' | 'cache' | 'registry';
-/** One community plugin as seen by the recommender. */
+/** One community plugin as seen by the plugin doctor. */
 export interface CommunityPlugin {
     /** Package or repository short name, e.g. `dsh-plugin-memory`. */
     readonly name: string;

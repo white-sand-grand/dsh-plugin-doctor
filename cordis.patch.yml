@@ -1,11 +1,11 @@
-# Bundle patch for `dsh-plugin-recommender`. Mounting this bundle adds the
+# Bundle patch for `dsh-plugin-doctor`. Mounting this bundle adds the
 # plugin's tool row with its default configuration; every value here is also
 # overridable from the profile's own patch layer or the settings namespace.
 - insert:
-    - id: plugin-recommender
-      name: dsh-plugin-recommender
+    - id: plugin-doctor
+      name: dsh-plugin-doctor
       config:
-        githubTokenEnv: DSH_PLUGIN_RECOMMENDER_GITHUB_TOKEN
+        githubTokenEnv: DSH_PLUGIN_DOCTOR_GITHUB_TOKEN
         similarityThreshold: 0.8
         cacheTtlMinutes: 30
         enableRegistryFallback: true

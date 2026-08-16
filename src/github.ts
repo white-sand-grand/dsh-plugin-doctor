@@ -4,7 +4,7 @@
  * registry snapshot). GitHub rate-limit responses (403/429) and network errors
  * never propagate to the caller; they step down the chain instead.
  *
- * @module dsh-plugin-recommender/github
+ * @module dsh-plugin-doctor/github
  */
 
 import { fetchJson, fetchText } from './http.ts'

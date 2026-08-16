@@ -5,7 +5,7 @@
  * execution (live GitHub, degraded if unreachable), and output rendering.
  *
  * Run from the package root after `pnpm run build`: `node verify-boot.mjs`
- * @module dsh-plugin-recommender/verify-boot
+ * @module dsh-plugin-doctor/verify-boot
  */
 
 import { Context } from '@deepseek-ai/cordis'

@@ -4,7 +4,7 @@
  * local installs — suggest which to keep and which to remove; (3) nothing
  * matches — emit a Plugin Spec for building it yourself.
  *
- * @module dsh-plugin-recommender/recommend
+ * @module dsh-plugin-doctor/recommend
  */
 import { suggestPluginName } from './spec.ts';
 import type { CommunityPlugin, RecommendResult, SearchResult } from './types.ts';

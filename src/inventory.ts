@@ -4,7 +4,7 @@
  * DSH home precedence (`$DSH_HOME` override, then `~/.dsh`). A missing or
  * unreadable profile yields an empty list plus a note — never a thrown error.
  *
- * @module dsh-plugin-recommender/inventory
+ * @module dsh-plugin-doctor/inventory
  */
 
 import { readFile } from 'node:fs/promises'

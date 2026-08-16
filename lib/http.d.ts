@@ -1,11 +1,11 @@
 /**
- * Outbound HTTP for the recommender. Prefers the DSH web capability (`ctx.web`)
+ * Outbound HTTP for the plugin doctor. Prefers the DSH web capability (`ctx.web`)
  * when composed so its fetch provider's size/redirect/timeout limits apply, and
  * falls back to the platform `fetch` otherwise — the v0.1 developer preview may
  * not compose the seam in every assembly, so presence is detected, never
  * assumed. All errors surface as thrown `Error`s the caller can degrade on.
  *
- * @module dsh-plugin-recommender/http
+ * @module dsh-plugin-doctor/http
  */
 /** Minimal face of `ctx.web` this module needs; avoids a hard seam dependency. */
 export interface WebFetchLike {

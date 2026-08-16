@@ -4,7 +4,7 @@
  * clustering, and irreplaceability scoring. Pure functions over
  * {@link CommunityPlugin}-shaped inputs so tests need no network.
  *
- * @module dsh-plugin-recommender/similarity
+ * @module dsh-plugin-doctor/similarity
  */
 
 import type {

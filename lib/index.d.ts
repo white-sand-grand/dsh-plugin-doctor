@@ -1,5 +1,5 @@
 /**
- * `dsh-plugin-recommender` — three Agent-facing tools over the DSH community
+ * `dsh-plugin-doctor` — three Agent-facing tools over the DSH community
  * plugin ecosystem: `plugin_community_search` (GitHub `dsh-plugin` topic with
  * TTL cache and degraded fallbacks), `plugin_similarity_analyze` (TF-IDF +
  * Jaccard similarity, redundancy clusters, irreplaceability), and
@@ -11,19 +11,19 @@
  * brief does not exist in DSH v0.1; this entry follows the real
  * `tool-todo`/`tool-web` consumer pattern instead.
  *
- * @module dsh-plugin-recommender
+ * @module dsh-plugin-doctor
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 /** Cordis plugin name used by loader diagnostics. */
-export declare const name = "plugin-recommender";
+export declare const name = "plugin-doctor";
 /** The tool registry is the only hard seam; the web capability is used when present. */
 export declare const inject: string[];
 /** Plugin configuration; every deployment-varying choice is a validated field. */
 export interface Config {
     /** GitHub PAT (optional) raising the API rate limit; prefer {@link githubTokenEnv}. */
     githubToken?: string;
-    /** Credential reference resolved per request; defaults to `DSH_PLUGIN_RECOMMENDER_GITHUB_TOKEN`. */
+    /** Credential reference resolved per request; defaults to `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN`. */
     githubTokenEnv?: string;
     /** Overall similarity above which two plugins are redundant. Defaults to 0.8. */
     similarityThreshold?: number;
