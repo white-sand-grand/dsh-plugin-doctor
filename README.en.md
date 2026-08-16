@@ -2,67 +2,85 @@
 
 **中文版：[README.md](README.md)**
 
-**Compatible with DSH v0.1.x (developer preview).** DSH is pre-release; this plugin detects capability presence before use and may need adjustment as DSH evolves.
+A "doctor" for the DSH plugin ecosystem — inspired by Claude Code's `/doctor` command. Tell it what you need: it finds a matching community plugin; if something you installed overlaps with it, it tells you which one to keep and which to remove; and if the community has nothing, it hands you a ready-to-follow spec for building it yourself.
 
-Community-plugin doctor for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — inspired by Claude Code's `/doctor` command, applied to the plugin ecosystem: it searches the DSH community (GitHub `dsh-plugin` topic), analyzes similarity and redundancy between plugins, and makes an install / de-duplicate / build-it-yourself decision.
+> ✅ **Status: fully working.** Verified end-to-end on DSH v0.1.0-rc.6: build, 19 unit tests, real tool registration and execution, and a live Web-UI conversation test. Install and go.
+>
+> ⚠️ DSH is a v0.1 developer preview and its API may change. The plugin guards itself (degrades gracefully when a capability is missing), but small adjustments may be needed if DSH changes significantly.
 
-## Tools exposed to the Agent
+## What it does for you
 
-| Tool | Purpose |
+| You say | It does |
 | --- | --- |
-| `plugin_community_search` | Search the `dsh-plugin` GitHub topic by natural-language intent; returns name, description, capabilities, dependencies, stars, recency. |
-| `plugin_similarity_analyze` | TF-IDF + Jaccard similarity matrix, redundancy clusters (default threshold 0.8), and an irreplaceability score per plugin. |
-| `plugin_recommend` | Three-branch decision: recommend the best community match; suggest removing a redundant installed plugin (with the `dsh plugin remove` command); or generate a Plugin Spec when the community has nothing suitable. |
+| "Find me a memory plugin" | Searches the community and returns the best matches, with install commands |
+| "Does this overlap with what I installed?" | Analyzes functional overlap and says plainly "keep A, remove B", with the removal command |
+| "I need X but can't find it" | Confirms the community has nothing, then generates a complete build-it-yourself spec |
 
-Try: “帮我找一个记忆插件，并检查是否和已安装的重复”.
-
-## Install
+## Up and running in one minute
 
 ```sh
 dsh plugin --profile web add github:white-sand-grand/dsh-plugin-doctor
-# or from a local checkout:
-dsh plugin --profile web add /absolute/path/to/dsh-plugin-doctor
+dsh web
 ```
 
-Then start DSH (`dsh web`) and ask the agent to use the tools above.
+Open `http://127.0.0.1:3080` and just talk to it, e.g.:
 
-## Configuration
+> 帮我找一个记忆插件，并检查是否和已安装的重复
 
-All fields live in the `plugin-doctor` settings namespace / the plugin entry's `config` block:
+The agent picks the right tool automatically — you just read the answer.
 
-| Field | Default | Meaning |
+## The three tools it adds
+
+You don't need to memorize these — the agent chooses. Listed so you know the boundaries:
+
+- **`plugin_community_search`** — searches community plugins (GitHub repos tagged `dsh-plugin`); returns description, capability tags, stars, last update.
+- **`plugin_similarity_analyze`** — compares a set of plugins for functional overlap and finds redundancy groups.
+- **`plugin_recommend`** — combines the two above into a final decision (install this / remove that / build it yourself + spec).
+
+## Configuration (optional — defaults just work)
+
+Every setting has a sensible default; feel free to skip this section. To change one, edit your profile's patch layer:
+
+| Field | Default | In plain words |
 | --- | --- | --- |
-| `githubTokenEnv` | `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN` | Credential reference for an optional GitHub PAT (raises the API rate limit). Resolved through the DSH credentials seam — never hardcode the token. |
-| `githubToken` | – | Literal secret; prefer `githubTokenEnv`. |
-| `similarityThreshold` | `0.8` | Overall similarity above which plugins form a redundancy cluster. |
-| `cacheTtlMinutes` | `30` | Community-listing cache lifetime; guards the GitHub rate limit. |
-| `enableRegistryFallback` | `true` | Serve the built-in third-party registry snapshot when GitHub is unreachable. |
+| `githubTokenEnv` | `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN` | Name of the env var holding your GitHub token. With a token, the search quota rises from 60 to 5000 requests/hour |
+| `githubToken` | none | Paste the token literally (not recommended in files — prefer the env-var way above) |
+| `similarityThreshold` | `0.8` | How much overlap counts as "redundant". Lower it to get more aggressive dedupe advice |
+| `cacheTtlMinutes` | `30` | How long search results are cached, to spare the GitHub quota |
+| `enableRegistryFallback` | `true` | Whether to fall back to a built-in static plugin list when GitHub is unreachable |
 
-**Web UI settings card:** the plugin registers its settings namespace with the host settings service (secret fields are redacted in descriptors), but DSH's web settings page only renders namespaces allowlisted in the host API proxy. Surfacing this plugin's card there requires a DSH-side allowlist entry (`WEB_SETTINGS_NAMESPACES` in `packages/host/apiproxy`), which this plugin deliberately does not patch — configure via the profile patch layer or settings file until DSH opens that surface to plugins.
+**Adding a token** (recommended): GitHub → Settings → Developer settings → Personal access tokens, generate one (no scopes needed), then:
 
-## Degradation behavior
+```bash
+echo "DSH_PLUGIN_DOCTOR_GITHUB_TOKEN: ghp_yourtoken" > ~/.dsh/.credentials.yaml
+chmod 600 ~/.dsh/.credentials.yaml
+```
 
-1. Live GitHub API (30-minute TTL cache in front).
-2. On failure (rate limit 403/429, network error): stale cache if present.
-3. Else: built-in static registry snapshot (from dshplugin.world / dsh.pub listings), disabled by `enableRegistryFallback: false`.
+## What happens on bad networks / rate limits
 
-Degradation is reported in tool output; no error ever blocks the DSH host.
+Nothing crashes. The plugin falls back in three layers, in order:
 
-## Architecture
+1. Normal: live GitHub queries (cached for 30 minutes).
+2. Rate-limited or unreachable: serve the last cached results.
+3. No cache at all: serve a built-in snapshot of the community list (from dshplugin.world / dsh.pub).
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the similarity-algorithm choice and the adaptation from the original `HarnessPlugin` sketch to the real Cordis plugin model.
+Whichever layer serves you, the answer says so — seeing a "degraded" note is informational, not a failure, and DSH itself is never affected.
 
-## Development
+## Contributing
 
 ```sh
+git clone git@github.com:white-sand-grand/dsh-plugin-doctor.git
+cd dsh-plugin-doctor
 pnpm install
-pnpm run build
-pnpm test
-node verify-boot.mjs   # smoke: mounts the built plugin on a real Cordis Context + ToolRuntime
+pnpm run build     # compile
+pnpm test          # run tests
+node verify-boot.mjs   # smoke: register and invoke once on a real DSH runtime
 ```
 
-`verify-boot.mjs` registers the three tools through the published `@deepseek-ai/dsh-tools` runtime and executes `plugin_recommend` end-to-end (live GitHub, degraded chain on rate limit). Use one environment consistently for `node_modules` (Windows and WSL pnpm layouts are not interchangeable).
+Why the similarity algorithm avoids LLM embeddings, how the code is organized, and how it maps onto the DSH plugin conventions live in [ARCHITECTURE.md](ARCHITECTURE.md). See [CONTRIBUTING.md](CONTRIBUTING.md) before sending changes and [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) before publishing.
+
+Note: create `node_modules` in one environment only (Windows or WSL — mixing them breaks it).
 
 ## License
 
-MIT. Add the `dsh-plugin` topic to your fork so the community (and this plugin) can find it.
+MIT. Forks welcome — tag your repo with `dsh-plugin` so this plugin (and the community) can find you.

@@ -2,67 +2,85 @@
 
 **English version: [README.en.md](README.en.md)**
 
-**Compatible with DSH v0.1.x (developer preview).** DSH 尚处预发布阶段；本插件在调用前检测能力存在性，但仍可能随 DSH 演进需要调整。
+DSH 插件生态的"体检医生"——灵感来自 Claude Code 的 `/doctor` 命令。你告诉它想要什么功能，它去社区找到合适的插件；如果发现你装的东西功能重复，它告诉你留哪个删哪个；如果社区根本没有，它直接给你一份"自己动手开发"的规格书。
 
-DSH（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)）社区插件"医生"——灵感来自 Claude Code 的 `/doctor` 命令：给插件生态做体检。它搜索 DSH 社区生态（GitHub `dsh-plugin` topic），分析插件间的相似度与功能冗余，并给出安装 / 去重 / 自己动手开发的三选一决策。
+> ✅ **当前状态：完整可用。** 已在 DSH v0.1.0-rc.6 上通过全部验证：构建、19 个单元测试、真实工具注册与调用、以及 Web UI 中的真实对话测试。装上即用。
+>
+> ⚠️ DSH 目前是 v0.1 开发者预览版，API 可能变化。插件已做了兼容保护（能力缺失时自动降级），但如果未来 DSH 大改，可能需要小调整。
 
-## 暴露给 Agent 的工具
+## 它能帮你做三件事
 
-| 工具 | 用途 |
+| 你说 | 它做 |
 | --- | --- |
-| `plugin_community_search` | 按自然语言意图搜索 `dsh-plugin` GitHub topic；返回名称、描述、capabilities、依赖、stars、更新时间。 |
-| `plugin_similarity_analyze` | TF-IDF + Jaccard 相似度矩阵、冗余簇（默认阈值 0.8）、每个插件的不可替代性评分。 |
-| `plugin_recommend` | 三分支决策：推荐最佳社区匹配；建议卸载冗余的已装插件（附 `dsh plugin remove` 命令）；社区没有合适的就生成一份 Plugin Spec。 |
+| "帮我找一个记忆插件" | 去社区搜索，给你最匹配的几个，附安装命令 |
+| "这个和我装的那个功能重复吗" | 分析功能重叠度，明确说"留 A 删 B"，附卸载命令 |
+| "我想要一个 XXX，但找不到" | 确认社区没有之后，生成一份完整的开发规格书，照着写就行 |
 
-试一试：“帮我找一个记忆插件，并检查是否和已安装的重复”。
-
-## 安装
+## 一分钟上手
 
 ```sh
 dsh plugin --profile web add github:white-sand-grand/dsh-plugin-doctor
-# 或从本地检出目录：
-dsh plugin --profile web add /absolute/path/to/dsh-plugin-doctor
+dsh web
 ```
 
-然后启动 DSH（`dsh web`），在对话里让 Agent 使用上述工具即可。
+打开 `http://127.0.0.1:3080`，直接在对话里说人话即可，比如：
 
-## 配置
+> 帮我找一个记忆插件，并检查是否和已安装的重复
 
-所有字段位于 `plugin-doctor` 设置命名空间 / 插件条目的 `config` 块：
+Agent 会自动调用插件完成搜索、比对和建议，你只需要看结果。
 
-| 字段 | 默认值 | 含义 |
+## 装好之后多了哪三个工具
+
+不需要记它们——Agent 会自己挑。列在这里只是方便你了解边界：
+
+- **`plugin_community_search`**：搜索社区插件（GitHub 上带 `dsh-plugin` 标签的仓库），返回简介、功能标签、star 数、更新时间。
+- **`plugin_similarity_analyze`**：把若干插件放在一起比对功能重叠度，找出"重复组"。
+- **`plugin_recommend`**：综合以上两步，给出最终建议（推荐安装 / 建议卸载 / 建议自研 + 规格书）。
+
+## 配置（可选，不配也能用）
+
+所有配置都有合理默认值，跳过本节完全没问题。想调整时改 profile 的 patch 层即可：
+
+| 配置项 | 默认值 | 大白话 |
 | --- | --- | --- |
-| `githubTokenEnv` | `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN` | GitHub PAT 凭据引用（可选，提升 API 限额）。经 DSH credentials seam 解析——绝不硬编码 token。 |
-| `githubToken` | – | 字面量 secret；优先用 `githubTokenEnv`。 |
-| `similarityThreshold` | `0.8` | 判定两个插件构成冗余簇的总体相似度门槛。 |
-| `cacheTtlMinutes` | `30` | 社区清单缓存寿命；保护 GitHub API 限额。 |
-| `enableRegistryFallback` | `true` | GitHub 不可达时是否使用内置第三方 registry 静态快照。 |
+| `githubTokenEnv` | `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN` | GitHub 访问令牌的环境变量名。配上令牌后搜索额度从每小时 60 次涨到 5000 次 |
+| `githubToken` | 无 | 直接填令牌（不推荐写进文件，优先用上面的环境变量方式） |
+| `similarityThreshold` | `0.8` | 重叠度超过多少算"功能重复"。调低会更激进地建议去重 |
+| `cacheTtlMinutes` | `30` | 搜索结果缓存多久，避免反复请求 GitHub |
+| `enableRegistryFallback` | `true` | GitHub 彻底连不上时，是否用内置的静态插件清单兜底 |
 
-**Web UI 设置卡片**：插件已向宿主设置服务注册命名空间（secret 字段在描述符中脱敏），但 DSH 的 Web 设置页只渲染宿主 API 代理白名单（`WEB_SETTINGS_NAMESPACES`）内的命名空间。本插件刻意不去改核心代码——在 DSH 向插件开放该入口之前，请通过 profile patch 层或设置文件配置。
+**令牌怎么配**（推荐方式）：去 GitHub → Settings → Developer settings → Personal access tokens 生成一个（不用勾任何权限），然后：
 
-## 降级行为
+```bash
+echo "DSH_PLUGIN_DOCTOR_GITHUB_TOKEN: ghp_你的令牌" > ~/.dsh/.credentials.yaml
+chmod 600 ~/.dsh/.credentials.yaml
+```
 
-1. 实时 GitHub API（前置 30 分钟 TTL 缓存）。
-2. 失败时（限流 403/429、网络错误）：有旧缓存则用旧缓存。
-3. 否则：内置 registry 静态快照（来自 dshplugin.world / dsh.pub 清单）；`enableRegistryFallback: false` 可关闭。
+## 网络不好 / 被限流时会怎样
 
-降级会在工具输出中明确注明；任何错误都不会阻塞 DSH 宿主。
+不用担心崩掉，插件有三层退路，按顺序降级：
 
-## 架构
+1. 正常情况：实时查 GitHub（结果缓存 30 分钟）。
+2. GitHub 限流或连不上：先用上次缓存的结果。
+3. 连缓存都没有：用内置的社区插件清单（来自 dshplugin.world / dsh.pub 的快照）。
 
-相似度算法选型（为何用 TF-IDF + Jaccard 而非 LLM embedding）与从最初 `HarnessPlugin` 草案到真实 Cordis 插件模型的适配说明，见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+无论走到哪一层，回复里都会注明当前用的是哪层数据——你看到"降级"字样只是提示，不是故障，DSH 本体不受任何影响。
 
-## 开发
+## 想参与开发
 
 ```sh
+git clone git@github.com:white-sand-grand/dsh-plugin-doctor.git
+cd dsh-plugin-doctor
 pnpm install
-pnpm run build
-pnpm test
-node verify-boot.mjs   # 冒烟：把构建产物挂到真实 Cordis Context + ToolRuntime 上
+pnpm run build     # 编译
+pnpm test          # 跑测试
+node verify-boot.mjs   # 冒烟：在真实 DSH 运行时里注册并调用一次
 ```
 
-`verify-boot.mjs` 会通过发布版 `@deepseek-ai/dsh-tools` 运行时注册三个工具，并端到端执行一次 `plugin_recommend`（实时 GitHub，限流时走降级链）。`node_modules` 请保持在同一个环境里创建（Windows 与 WSL 的 pnpm 布局不可互换）。
+算法选型理由（为什么不用大模型算相似度）、代码结构、与 DSH 插件规范的对应关系，都在 [ARCHITECTURE.md](ARCHITECTURE.md)。提交代码前请看 [CONTRIBUTING.md](CONTRIBUTING.md)，发布前过一遍 [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md)。
+
+注意：`node_modules` 请固定在同一个环境里创建（Windows 或 WSL 二选一），两边混用会坏。
 
 ## 许可证
 
-MIT。给你的 fork 加上 `dsh-plugin` topic，社区（以及本插件自己）就能发现它。
+MIT。欢迎 fork——记得给你自己的仓库也打上 `dsh-plugin` 标签，这样这个插件（和整个社区）就能发现你。
