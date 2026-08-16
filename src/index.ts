@@ -15,6 +15,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -24,11 +25,14 @@ import { CommunitySource } from './github.ts'
 import type { WebFetchLike } from './http.ts'
 import { askChoiceFactory } from './interaction.ts'
 import type { UserQuestionsLike } from './interaction.ts'
-import { readInventory, toPluginRows } from './inventory.ts'
+import { readInventory, toPluginRows, resolveDshHome } from './inventory.ts'
+import { assignTiers, renderLandscape } from './landscape.ts'
+import type { PluginUsageSummary } from './landscape.ts'
 import { recommend } from './recommend.ts'
 import type { DecisionHooks } from './recommend.ts'
 import { analyze } from './similarity.ts'
 import type { CommunityPlugin, SearchFilters, SearchResult, SimilarityReport } from './types.ts'
+import { auditToolUsage, pluginToolMap } from './usage.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'plugin-doctor'
@@ -108,6 +112,20 @@ interface RecommendOutput {
   branch: 'recommend' | 'dedupe' | 'integrate' | 'spec' | 'none'
   report: string
   removals: string[]
+}
+
+/** Wire payload of `plugin_usage_audit`. */
+interface UsageAuditOutput {
+  report: string
+  usage: { tool: string; plugin: string; calls: number; sessions: number; lastUsed?: string }[]
+  unusedPlugins: string[]
+  inventoryNote?: string
+}
+
+/** Wire payload of `plugin_landscape`. */
+interface LandscapeOutput {
+  report: string
+  tiers: { name: string; tier: 'core' | 'active' | 'idle' | 'review' | 'unattributed'; reason: string }[]
 }
 
 /**
@@ -373,6 +391,145 @@ export function apply(ctx: Context, config: Config): void {
     presentCall: args => ({ card: 'generic', title: 'Recommend a plugin decision', kind: 'other', rawInput: args }),
   }))
 
+  ctx.tools.register(defineTool({
+    name: 'plugin_usage_audit',
+    description:
+      'Audit which plugins you actually use: scans local DSH session logs for real tool calls and '
+      + 'reports per-tool call counts, recency, and the owning plugin. Installed plugins whose '
+      + 'declared tools were never called are flagged with a removal suggestion. Attribution uses '
+      + "each package's `dsh.tools` declaration; undeclared plugins read as unattributed. Purely "
+      + 'local — no network.',
+    parameters: {
+      profile: {
+        type: 'string',
+        description: 'Profile whose installs are audited. Defaults to "web".',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          report: { type: 'string', required: true },
+          usage: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                tool: { type: 'string', required: true },
+                plugin: { type: 'string', required: true },
+                calls: { type: 'integer', required: true },
+                sessions: { type: 'integer', required: true },
+                lastUsed: { type: 'string' },
+              },
+            },
+          },
+          unusedPlugins: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: (value as UsageAuditOutput).report }],
+    },
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const profile = args.profile ?? 'web'
+      const inventory = await readInventory(profile)
+      const audit = await auditToolUsage(join(resolveDshHome(), 'sessions'))
+      const attribution = await pluginToolMap(join(resolveDshHome(), 'profiles', profile), inventory.names)
+      const attributedPlugins = new Set(attribution.values())
+      const unusedPlugins = inventory.names.filter(name => attributedPlugins.has(name)
+        && !audit.tools.some(tool => attribution.get(tool.tool) === name))
+      const usage = audit.tools.map(tool => ({
+        tool: tool.tool,
+        plugin: attribution.get(tool.tool) ?? '(unattributed)',
+        calls: tool.calls,
+        sessions: tool.sessions,
+        lastUsed: tool.lastUsed,
+      }))
+      const output: UsageAuditOutput = {
+        report: renderUsageAudit(usage, unusedPlugins, audit.sessionsScanned, audit.skipped, profile, audit.note),
+        usage,
+        unusedPlugins,
+        ...(inventory.note === undefined ? {} : { inventoryNote: inventory.note }),
+      }
+      return output
+    },
+    presentCall: args => ({ card: 'generic', title: 'Audit plugin usage', kind: 'other', rawInput: args }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'plugin_landscape',
+    description:
+      'Visualize the plugin landscape: a similarity relation graph (Mermaid, with a text fallback) '
+      + 'and a tier classification of installed plugins — core / active / idle / review — combining '
+      + 'real usage from session logs with irreplaceability from similarity analysis. Pass an intent '
+      + 'to include community candidates in the graph; without one the view covers installed plugins.',
+    parameters: {
+      intent: {
+        type: 'string',
+        description: 'Optional natural-language need; matching community plugins join the relation graph.',
+      },
+      profile: {
+        type: 'string',
+        description: 'Profile whose installs are analyzed. Defaults to "web".',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          report: { type: 'string', required: true },
+          tiers: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string', required: true },
+                tier: { type: 'string', enum: ['core', 'active', 'idle', 'review', 'unattributed'], required: true },
+                reason: { type: 'string', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: (value as LandscapeOutput).report }],
+    },
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const profile = args.profile ?? 'web'
+      const threshold = current().similarityThreshold ?? DEFAULT_THRESHOLD
+      const inventory = await readInventory(profile)
+      const installedRows = toPluginRows(inventory.names)
+      const candidates = args.intent === undefined ? [] : (await searchWithToken(args.intent, {}, exec.signal)).plugins
+      const combined = [...candidates, ...installedRows.filter(plugin => !candidates.some(candidate => candidate.name === plugin.name))]
+      const report = analyze(combined, threshold)
+      const audit = await auditToolUsage(join(resolveDshHome(), 'sessions'))
+      const attribution = await pluginToolMap(join(resolveDshHome(), 'profiles', profile), inventory.names)
+      const usage: PluginUsageSummary[] = inventory.names.map(name => {
+        const tools = [...attribution.entries()].filter(([, owner]) => owner === name).map(([tool]) => tool)
+        if (tools.length === 0) return { name }
+        const entries = audit.tools.filter(tool => tools.includes(tool.tool))
+        const calls = entries.reduce((sum, entry) => sum + entry.calls, 0)
+        const newest = entries.reduce((max, entry) => Math.max(max, Date.parse(entry.lastUsed)), 0)
+        return { name, calls, daysSinceUse: Number.isNaN(newest) ? undefined : Math.max(0, Math.round((Date.now() - newest) / 86_400_000)) }
+      })
+      // Installed plugins that also exist as community rows keep the richer
+      // metadata (capabilities, stars, update time) for tiering.
+      const installedWithMetadata = inventory.names
+        .map(name => combined.find(plugin => plugin.name === name) ?? installedRows.find(plugin => plugin.name === name)!)
+        .filter((plugin): plugin is CommunityPlugin => plugin !== undefined)
+      const tiers = assignTiers(installedWithMetadata, usage, report)
+      const output: LandscapeOutput = {
+        report: renderLandscape(tiers, report, threshold, inventory.names, audit.sessionsScanned),
+        tiers: tiers.map(tier => ({ name: tier.name, tier: tier.tier, reason: tier.reason })),
+      }
+      return output
+    },
+    presentCall: args => ({ card: 'generic', title: 'Visualize plugin landscape', kind: 'other', rawInput: args }),
+  }))
+
   /**
    * Build the compared set for the similarity tool when no explicit list is
    * given: community candidates for the intent plus the profile's installs.
@@ -393,6 +550,31 @@ function renderSearch(value: SearchOutput): string {
     value.degraded === undefined ? '' : `> ${value.degraded}\n`,
     lines.length === 0 ? 'No community plugins matched.' : `Community plugins:\n${lines.join('\n')}`,
   ].filter(line => line !== '').join('\n')
+}
+
+/** Markdown rendering of a usage audit. */
+function renderUsageAudit(
+  usage: { tool: string; plugin: string; calls: number; sessions: number; lastUsed?: string }[],
+  unusedPlugins: readonly string[],
+  sessionsScanned: number,
+  skipped: number,
+  profile: string,
+  note?: string,
+): string {
+  const lines = usage.map(entry =>
+    `- \`${entry.tool}\` (${entry.plugin}) — ${entry.calls} call${entry.calls === 1 ? '' : 's'} in ${entry.sessions} session${entry.sessions === 1 ? '' : 's'}${entry.lastUsed !== undefined ? ` · last used ${entry.lastUsed.slice(0, 10)}` : ''}`)
+  const unused = unusedPlugins.length === 0
+    ? 'Every attributed plugin has recorded usage.'
+    : unusedPlugins.map(name => `- \`${name}\` — its declared tools were never called:\n\n\`\`\`sh\ndsh plugin --profile ${profile} remove ${name}\n\`\`\``).join('\n')
+  return [
+    note ?? `Scanned ${sessionsScanned} session log${sessionsScanned === 1 ? '' : 's'}${skipped > 0 ? ` (skipped ${skipped} unreadable)` : ''}.`,
+    '',
+    usage.length > 0 ? `Tool usage:\n${lines.join('\n')}` : 'No tool calls recorded yet.',
+    '',
+    `Plugins with zero recorded usage:\n${unused}`,
+    '',
+    'Attribution follows each package\'s `dsh.tools` declaration; tools reading "(unattributed)" belong to plugins that have not declared it yet.',
+  ].join('\n')
 }
 
 /** Markdown rendering of a similarity analysis. */

@@ -15,6 +15,8 @@ A "doctor" for the DSH plugin ecosystem — inspired by Claude Code's `/doctor` 
 | "Find me a memory plugin" | Searches the community and returns the best matches, with install commands |
 | "Does this overlap with what I installed?" | Lays out the overlap facts, then **asks how to proceed**: keep A remove B (with commands) / consolidate the duplicates into one new plugin you build (integration spec) / leave as-is |
 | "I need X but can't find it" | Lists near-miss competitors and what each lacks, **asks whether you want to self-develop**, and only after you confirm generates the build-it-yourself spec |
+| "Which of my plugins never get used?" | Scans local session logs for real tool-call counts and suggests removal for zero-call plugins (purely local) |
+| "Show me my overall plugin landscape" | Visualization: a similarity relation graph (Mermaid with a text fallback) plus a four-tier classification — core / active / idle / review — from real usage × irreplaceability |
 
 ## Up and running in one minute
 
@@ -36,6 +38,8 @@ You don't need to memorize these — the agent chooses. Listed so you know the b
 - **`plugin_community_search`** — searches community plugins (GitHub repos tagged `dsh-plugin`); returns description, capability tags, stars, last update.
 - **`plugin_similarity_analyze`** — compares a set of plugins for functional overlap and finds redundancy groups.
 - **`plugin_recommend`** — combines the two above into a final decision. Anything that would emit a spec or remove a plugin is gated on your explicit choice (a choice card in the Web UI); non-interactive environments fall back to plain recommendations.
+- **`plugin_usage_audit`** — reads DSH's local session logs (zstd-compressed JSONL) and reports how often each tool was really invoked and when. Tools are attributed to plugins via each package's `dsh.tools` declaration; a declared plugin with zero calls is flagged as removable. Corrupt old logs are skipped, torn logs are salvaged up to their last complete frame, and the audit never aborts on a single bad artifact.
+- **`plugin_landscape`** — the big picture: a similarity relation graph (Mermaid source block; the same report carries a text fallback for surfaces that don't render Mermaid) plus four tiers — `core` (heavy use, or used and hard to replace), `active` (some use), `idle` (declared tools, zero calls), `review` (zero calls plus stale or redundant). With an optional intent, community matches join the graph as dashed nodes.
 
 ## Configuration (optional — defaults just work)
 

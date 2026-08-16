@@ -34,7 +34,17 @@ plugin_recommend ──► github.ts + inventory.ts ($DSH_HOME/profiles/<p>/pack
                                                                                           │                                                    └─ skip: record only
                                                                                           └─ branch 3: near-miss competitors ──► ask (build / abort) ──┬─ build: Plugin Spec (spec.ts)
                                                                                                                                                        └─ abort: competitor list only
+plugin_usage_audit ──► usage.ts ──► sessions/<cwd-slug>/session-<id>/session.jsonl.zstd (node:zlib zstd, Node ≥22.19)
+                              └─► profile node_modules manifests (dsh.tools attribution) ──► zero-call plugins ──► removal suggestion
 ```
+
+## Usage audit (v0.3)
+
+`auditToolUsage` walks the durable session logs under the DSH home and aggregates `tool/call` events per tool name. Events carry no wall clock, so `lastUsed` is the mtime of the newest log containing the call. The JSONL persistence format is concatenated zstd frames; a torn final frame still decodes its complete leading frames via one-shot `zstdDecompress`, so torn-tail logs count as scanned with partial data, while garbage files throw and are skipped-and-counted — the audit never aborts on one bad artifact. Tool→plugin attribution is opt-in: a package declares its tools as `dsh.tools` in package.json (this plugin does); undeclared plugins read as `(unattributed)` rather than being misclassified as unused.
+
+## Landscape tiers and graph (v0.4)
+
+`plugin_landscape` joins three sources: installed inventory, the usage audit above, and — when an intent is given — community candidates (installed plugins that also exist as community rows keep the richer metadata for tiering). Tiers combine usage volume/recency with irreplaceability from the same similarity analysis that powers dedupe: `core` (≥10 calls, or used with irreplaceability ≥0.7), `active` (some calls), `idle` (declared tools, zero calls), `review` (idle plus stale-or-redundant), `unattributed` (no measurable usage). The relation graph renders as Mermaid (`graph LR`, edges capped strongest-first at 15) with an indented text fallback in the same report, so non-Mermaid surfaces stay readable. All logic lives in `landscape.ts` as pure functions.
 
 ## Interactive confirmation funnel (v0.2)
 

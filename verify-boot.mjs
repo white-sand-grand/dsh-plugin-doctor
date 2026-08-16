@@ -19,13 +19,25 @@ await ctx.plugin(ToolRuntime)
 await ctx.plugin(plugin, {})
 
 const registered = ctx.tools.schemas().map(tool => tool.name)
-const expected = ['plugin_community_search', 'plugin_similarity_analyze', 'plugin_recommend']
+const expected = ['plugin_community_search', 'plugin_similarity_analyze', 'plugin_recommend', 'plugin_usage_audit', 'plugin_landscape']
 const missing = expected.filter(name => !registered.includes(name))
 if (missing.length > 0) {
   console.error('MISSING TOOLS:', missing, '— registered:', registered)
   process.exit(1)
 }
-console.log('OK: all three tools registered:', expected.join(', '))
+console.log('OK: all five tools registered:', expected.join(', '))
+
+const auditExecution = await ctx.tools.execute({
+  signal: AbortSignal.timeout(30_000),
+  callId: 'verify-audit',
+  name: 'plugin_usage_audit',
+  arguments: {},
+})
+console.log(`OK: plugin_usage_audit executed (isError=${auditExecution.isError})`)
+if (auditExecution.isError) {
+  console.error('FAIL: plugin_usage_audit errored')
+  process.exit(1)
+}
 
 const execution = await ctx.tools.execute({
   signal: AbortSignal.timeout(60_000),

@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-doctor",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "DSH plugin doctor: community search, similarity analysis, and install/dedupe/build-it-yourself decisions for the dsh-plugin ecosystem.",
   "type": "module",
   "license": "MIT",
@@ -33,7 +33,17 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    }
+    },
+    "tools": [
+      "plugin_community_search",
+      "plugin_similarity_analyze",
+      "plugin_recommend",
+      "plugin_usage_audit",
+      "plugin_landscape"
+    ]
+  },
+  "engines": {
+    "node": ">=22.19"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0 <5",
