@@ -3,6 +3,7 @@
 **English version: [README.en.md](README.en.md)**
 
 `dsh-plugin-doctor` 是 DSH 插件生态的诊断与决策工具。它可以搜索社区插件、比较功能重复、识别聚合 bundle 提供的子插件、检查批量安装冲突、审计实际使用量，并生成插件全景关系图。
+灵感来源自 claude code 的命令 "/doctor" 以及无数次下载插件造成的崩溃和冲突。
 
 当前版本：`0.8.0`。插件要求 Node.js `>=22.19`，默认只读，不会自行安装、卸载或启动 Web UI。
 
