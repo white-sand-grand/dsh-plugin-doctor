@@ -36,7 +36,12 @@ plugin_recommend ──► github.ts + inventory.ts ($DSH_HOME/profiles/<p>/pack
                                                                                                                                                        └─ abort: competitor list only
 plugin_usage_audit ──► usage.ts ──► sessions/<cwd-slug>/session-<id>/session.jsonl.zstd (node:zlib zstd, Node ≥22.19)
                               └─► profile node_modules manifests (dsh.tools attribution) ──► zero-call plugins ──► removal suggestion
+plugin_install_guard ──► github.ts repository file inspection ──► install-check.ts ──► duplicate tool/patch ownership or incompatible peer major ──► INSTALL BLOCKED
 ```
+
+## Multi-repository install preflight
+
+The system-prompt section requires `plugin_install_guard` before any request to install two or more supplied repository references. The tool fetches each GitHub repository's root package manifest and its declared `dsh.bundle.patch` file, then blocks duplicate package names, `dsh.tools` registrations, Cordis row ids or plugin names, incompatible peer-dependency major versions, and repositories that cannot be inspected. Different peer ranges within one major are reported as warnings. The tool is read-only; only `safeToInstall: true` permits the agent to proceed to installation.
 
 ## Usage audit (v0.3)
 

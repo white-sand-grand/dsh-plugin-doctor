@@ -10,6 +10,7 @@
 import { fetchJson, fetchText } from './http.ts'
 import type { HttpDeps } from './http.ts'
 import type { CommunityPlugin, SearchFilters, SearchResult } from './types.ts'
+import type { InstallInspection } from './install-check.ts'
 
 /** GitHub Search API topic every discovery query narrows to. */
 const DSH_PLUGIN_TOPIC = 'dsh-plugin'
@@ -135,6 +136,39 @@ export class CommunitySource {
   }
 
   /**
+   * Fetch the package manifest and optional Cordis patch for install preflight.
+   * A per-repository failure is returned as data so one bad candidate does not
+   * hide the other conflicts; the install guard blocks when inspection fails.
+   * @param refs - GitHub install references or repository URLs.
+   * @param signal - cancellation signal from the tool execution.
+   */
+  async inspectInstallRefs(refs: readonly string[], signal: AbortSignal | undefined): Promise<InstallInspection[]> {
+    return Promise.all(refs.map(async ref => {
+      const repo = normalizeGitHubRepo(ref)
+      if (repo === undefined) return { ref, error: 'only GitHub repository refs or URLs can be inspected' }
+      try {
+        const metadata = await fetchJson(this.deps, `https://api.github.com/repos/${repo}`, signal) as { default_branch?: unknown }
+        const branch = typeof metadata.default_branch === 'string' && metadata.default_branch.length > 0 ? metadata.default_branch : 'main'
+        const packageResult = await fetchText(this.deps, `https://raw.githubusercontent.com/${repo}/${encodeURI(branch)}/package.json`, signal, 'application/json')
+        if (!(packageResult.status >= 200 && packageResult.status < 300)) throw new Error(`package.json returned HTTP ${packageResult.status}`)
+        const packageJson = JSON.parse(packageResult.text) as { dsh?: { bundle?: { patch?: unknown } } }
+        const declaredPatch = packageJson.dsh?.bundle?.patch
+        const patchPath = typeof declaredPatch === 'string' ? declaredPatch.replace(/^\.\//, '') : 'cordis.patch.yml'
+        if (patchPath.startsWith('/') || patchPath.split('/').includes('..')) throw new Error(`unsafe bundle patch path: ${patchPath}`)
+        const patchResult = await fetchText(this.deps, `https://raw.githubusercontent.com/${repo}/${encodeURI(branch)}/${patchPath}`, signal, 'text/plain')
+        return {
+          ref,
+          repo,
+          packageJson,
+          patchText: patchResult.status >= 200 && patchResult.status < 300 ? patchResult.text : '',
+        }
+      } catch (error) {
+        return { ref, repo, error: errorMessage(error) }
+      }
+    }))
+  }
+
+  /**
    * Fetch (or serve from cache) the full topic listing with README excerpts.
    * Errors step down: live API → stale cache → live registry pages → built-in
    * registry snapshot.
@@ -245,6 +279,13 @@ export class CommunitySource {
     }
     return ''
   }
+}
+
+function normalizeGitHubRepo(ref: string): string | undefined {
+  const trimmed = ref.trim().replace(/^github:/, '').replace(/\.git$/, '')
+  const url = /^https?:\/\/github\.com\/([^/]+\/[^/#?]+)(?:[/?#].*)?$/i.exec(trimmed)?.[1]
+  const repo = url ?? (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed) ? trimmed : undefined)
+  return repo === undefined ? undefined : repo
 }
 
 /**

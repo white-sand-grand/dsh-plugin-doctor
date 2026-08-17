@@ -8,6 +8,7 @@
  */
 import type { HttpDeps } from './http.ts';
 import type { SearchFilters, SearchResult } from './types.ts';
+import type { InstallInspection } from './install-check.ts';
 /**
  * Client for the community data source with TTL caching and degradation.
  * One instance lives in the plugin's `apply` scope; its cache is the
@@ -32,6 +33,14 @@ export declare class CommunitySource {
      * @returns ranked plugins plus a degradation note when a fallback served them.
      */
     search(intent: string, filters: SearchFilters, signal: AbortSignal | undefined): Promise<SearchResult>;
+    /**
+     * Fetch the package manifest and optional Cordis patch for install preflight.
+     * A per-repository failure is returned as data so one bad candidate does not
+     * hide the other conflicts; the install guard blocks when inspection fails.
+     * @param refs - GitHub install references or repository URLs.
+     * @param signal - cancellation signal from the tool execution.
+     */
+    inspectInstallRefs(refs: readonly string[], signal: AbortSignal | undefined): Promise<InstallInspection[]>;
     /**
      * Fetch (or serve from cache) the full topic listing with README excerpts.
      * Errors step down: live API → stale cache → live registry pages → built-in

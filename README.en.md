@@ -4,7 +4,7 @@
 
 A "doctor" for the DSH plugin ecosystem — inspired by Claude Code's `/doctor` command. Tell it what you need: it finds a matching community plugin; if something you installed overlaps with it, it tells you which one to keep and which to remove; and if the community has nothing, it hands you a ready-to-follow spec for building it yourself.
 
-> ✅ **Status: fully working.** Verified end-to-end on DSH v0.1.0-rc.6: build, 48 tests, real tool registration and execution, and a live Web-UI conversation test. Install and go.
+> ✅ **Status: fully working.** Verified end-to-end on DSH v0.1.0-rc.6: build, 53 tests, real tool registration and execution, and a live Web-UI conversation test. Install and go.
 >
 > ⚠️ DSH is a v0.1 developer preview and its API may change. The plugin guards itself (degrades gracefully when a capability is missing), but small adjustments may be needed if DSH changes significantly.
 
@@ -31,13 +31,14 @@ Open `http://127.0.0.1:3080` and just talk to it, e.g.:
 
 The agent picks the right tool automatically — you just read the answer.
 
-## The three tools it adds
+## The six tools it adds
 
 You don't need to memorize these — the agent chooses. Listed so you know the boundaries:
 
 - **`plugin_community_search`** — searches community plugins (GitHub repos tagged `dsh-plugin`); returns description, capability tags, stars, last update.
 - **`plugin_similarity_analyze`** — compares a set of plugins for functional overlap and finds redundancy groups.
 - **`plugin_recommend`** — combines the two above into a final decision. Anything that would emit a spec or remove a plugin is gated on your explicit choice (a choice card in the Web UI); non-interactive environments fall back to plain recommendations. Commands are printed by default; with `allowExecuteActions` on, a confirmed keep/remove choice is executed for real (install the keeper, remove the duplicates, per-action result reported). Non-interactive paths never execute.
+- **`plugin_install_guard`** — when several repository addresses are supplied for one installation request, inspect their `package.json`, declared tools, Cordis patch rows, and peer dependencies before any `dsh plugin ... add` command. Duplicate registrations or incompatible peer majors return **INSTALL BLOCKED** with the reason. This tool is read-only and never installs anything.
 - **`plugin_usage_audit`** — reads DSH's local session logs (zstd-compressed JSONL) and reports how often each tool was really invoked and when. Tools are attributed to plugins via each package's `dsh.tools` declaration; a declared plugin with zero calls is flagged as removable. Corrupt old logs are skipped, torn logs are salvaged up to their last complete frame, and the audit never aborts on a single bad artifact. **Compatibility**: decompression needs `node:zlib` zstd support (Node ≥22.15). On older Node — common when dsh is launched via `npx` — the plugin still loads and every other tool works; the usage audit degrades and says why in its report.
 - **`plugin_landscape`** — the big picture: a similarity relation graph (Mermaid source block; the same report carries a text fallback for surfaces that don't render Mermaid) plus four tiers — `core` (heavy use, or used and hard to replace), `active` (some use), `idle` (declared tools, zero calls), `review` (zero calls plus stale or redundant). With an optional intent, community matches join the graph as dashed nodes.
 

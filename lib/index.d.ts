@@ -1,9 +1,7 @@
 /**
- * `dsh-plugin-doctor` — three Agent-facing tools over the DSH community
- * plugin ecosystem: `plugin_community_search` (GitHub `dsh-plugin` topic with
- * TTL cache and degraded fallbacks), `plugin_similarity_analyze` (TF-IDF +
- * Jaccard similarity, redundancy clusters, irreplaceability), and
- * `plugin_recommend` (recommend / de-duplicate / generate a Plugin Spec).
+ * `dsh-plugin-doctor` — six Agent-facing tools over the DSH community plugin
+ * ecosystem: community search, similarity analysis, recommendation, multi-repo
+ * install preflight, usage audit, and an installed-plugin landscape.
  *
  * Adaptation note: DSH plugins are Cordis plugins — module-level `name`,
  * `inject`, schemastery `Config`, and `apply(ctx, config)` with fiber-scoped
@@ -17,7 +15,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 /** Cordis plugin name used by loader diagnostics. */
 export declare const name = "plugin-doctor";
-/** The tool registry is the only hard seam; the web capability is used when present. */
+/** Tool and prompt registries are required; the web capability is used when present. */
 export declare const inject: string[];
 /** Plugin configuration; every deployment-varying choice is a validated field. */
 export interface Config {
@@ -41,7 +39,7 @@ export interface Config {
 }
 export declare const Config: z<Config>;
 /**
- * Install the three tools and the settings section.
+ * Install the six tools, install-preflight guidance, and the settings section.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - deployment configuration.
  */

@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-doctor",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "DSH plugin doctor: community search, similarity analysis, and install/dedupe/build-it-yourself decisions for the dsh-plugin ecosystem.",
   "type": "module",
   "license": "MIT",
@@ -38,6 +38,7 @@
       "plugin_community_search",
       "plugin_similarity_analyze",
       "plugin_recommend",
+      "plugin_install_guard",
       "plugin_usage_audit",
       "plugin_landscape"
     ]
@@ -49,6 +50,7 @@
     "@deepseek-ai/cordis": ">=4.0.0 <5",
     "@deepseek-ai/dsh-credentials": ">=0.1.0-rc.2 <0.2.0",
     "@deepseek-ai/dsh-settings": ">=0.1.0-rc.2 <0.2.0",
+    "@deepseek-ai/dsh-system-prompt": ">=0.1.0-rc.2 <0.2.0",
     "@deepseek-ai/dsh-tools": ">=0.1.0-rc.2 <0.2.0"
   },
   "devDependencies": {

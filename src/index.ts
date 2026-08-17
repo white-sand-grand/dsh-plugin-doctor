@@ -1,9 +1,7 @@
 /**
- * `dsh-plugin-doctor` — three Agent-facing tools over the DSH community
- * plugin ecosystem: `plugin_community_search` (GitHub `dsh-plugin` topic with
- * TTL cache and degraded fallbacks), `plugin_similarity_analyze` (TF-IDF +
- * Jaccard similarity, redundancy clusters, irreplaceability), and
- * `plugin_recommend` (recommend / de-duplicate / generate a Plugin Spec).
+ * `dsh-plugin-doctor` — six Agent-facing tools over the DSH community plugin
+ * ecosystem: community search, similarity analysis, recommendation, multi-repo
+ * install preflight, usage audit, and an installed-plugin landscape.
  *
  * Adaptation note: DSH plugins are Cordis plugins — module-level `name`,
  * `inject`, schemastery `Config`, and `apply(ctx, config)` with fiber-scoped
@@ -20,12 +18,14 @@ import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { CommunitySource } from './github.ts'
 import type { WebFetchLike } from './http.ts'
 import { askChoiceFactory } from './interaction.ts'
 import type { UserQuestionsLike } from './interaction.ts'
+import { analyzeInstallConflicts } from './install-check.ts'
 import { readInventory, toPluginRows, resolveDshHome } from './inventory.ts'
 import { assignTiers, renderLandscape } from './landscape.ts'
 import type { PluginUsageSummary } from './landscape.ts'
@@ -38,8 +38,8 @@ import { auditToolUsage, pluginToolMap } from './usage.ts'
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'plugin-doctor'
 
-/** The tool registry is the only hard seam; the web capability is used when present. */
-export const inject = ['tools']
+/** Tool and prompt registries are required; the web capability is used when present. */
+export const inject = ['tools', 'systemPrompt']
 
 const DEFAULT_TOKEN_ENV = 'DSH_PLUGIN_DOCTOR_GITHUB_TOKEN'
 const DEFAULT_THRESHOLD = 0.8
@@ -123,6 +123,15 @@ interface RecommendOutput {
   removals: string[]
 }
 
+/** Wire payload of `plugin_install_guard`. */
+interface InstallGuardOutput {
+  safeToInstall: boolean
+  inspected: string[]
+  uninspected: string[]
+  conflicts: { kind: string; severity: string; refs: string[]; detail: string }[]
+  report: string
+}
+
 /** One `dsh plugin` invocation outcome for the execution log. */
 interface ActionOutcome {
   readonly ok: boolean
@@ -173,11 +182,17 @@ interface LandscapeOutput {
 }
 
 /**
- * Install the three tools and the settings section.
+ * Install the six tools, install-preflight guidance, and the settings section.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - deployment configuration.
  */
 export function apply(ctx: Context, config: Config): void {
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: 'tool:plugin-install-guard',
+    order: 118,
+    text: 'Before installing two or more DSH plugin repositories supplied by the user, call `plugin_install_guard` with every repository reference. Do not run any `dsh plugin ... add` command unless it returns `safeToInstall: true`. When it blocks or cannot inspect a repository, explain the reported risk before proposing any next action; never bypass the failed preflight.',
+  }), 'plugin-doctor.install-guard-prompt')
+
   let current: () => Config = () => config
   installSettingsSection(ctx, SETTINGS_NAMESPACE, Config, config, {
     setSource: (source) => {
@@ -442,6 +457,71 @@ export function apply(ctx: Context, config: Config): void {
       return output
     },
     presentCall: args => ({ card: 'generic', title: 'Recommend a plugin decision', kind: 'other', rawInput: args }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'plugin_install_guard',
+    description:
+      'Preflight two or more GitHub DSH plugin repositories before installing them together. '
+      + 'Call this before any `dsh plugin ... add` commands when the user supplied several repository '
+      + 'addresses. It inspects package.json, declared tools, Cordis patch ids/names, and peer dependency '
+      + 'versions. A blocking conflict returns INSTALL BLOCKED with the reason; this tool never installs '
+      + 'or changes files.',
+    parameters: {
+      refs: {
+        type: 'array',
+        required: true,
+        description: 'GitHub refs or URLs, such as github:owner/repo or https://github.com/owner/repo.',
+        items: { type: 'string' },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          safeToInstall: { type: 'boolean', required: true },
+          inspected: { type: 'array', items: { type: 'string' }, required: true },
+          uninspected: { type: 'array', items: { type: 'string' }, required: true },
+          conflicts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                kind: { type: 'string', required: true },
+                severity: { type: 'string', required: true },
+                refs: { type: 'array', items: { type: 'string' }, required: true },
+                detail: { type: 'string', required: true },
+              },
+            },
+            required: true,
+          },
+          report: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: (value as InstallGuardOutput).report }],
+    },
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const sourceRefs = [...new Set(args.refs.map(ref => ref.trim()).filter(ref => ref.length > 0))]
+      const inspections = await source.inspectInstallRefs(sourceRefs, exec.signal)
+      const result = analyzeInstallConflicts(inspections)
+      const output: InstallGuardOutput = {
+        safeToInstall: result.safeToInstall,
+        inspected: [...result.inspected],
+        uninspected: [...result.uninspected],
+        conflicts: result.conflicts.map(conflict => ({
+          kind: conflict.kind,
+          severity: conflict.severity,
+          refs: [...conflict.refs],
+          detail: conflict.detail,
+        })),
+        report: result.report,
+      }
+      return output
+    },
+    presentCall: args => ({ card: 'generic', title: 'Check plugin install compatibility', kind: 'other', rawInput: args }),
   }))
 
   ctx.tools.register(defineTool({
