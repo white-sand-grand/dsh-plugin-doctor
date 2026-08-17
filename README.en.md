@@ -2,6 +2,8 @@
 
 **Chinese version: [README.md](README.md)**
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 `dsh-plugin-doctor` is a diagnostics and decision tool for the DSH plugin ecosystem. It searches community plugins, compares overlap, understands aggregate bundles, guards multi-plugin installs, audits real usage, and renders a plugin landscape graph.
 
 Current version: `0.8.0`. Requires Node.js `>=22.19`. The plugin is read-only by default: it does not start Web UI or mutate a profile on its own.

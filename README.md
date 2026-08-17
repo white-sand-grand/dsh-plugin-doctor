@@ -2,6 +2,8 @@
 
 **English version: [README.en.md](README.en.md)**
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 `dsh-plugin-doctor` 是 DSH 插件生态的诊断与决策工具。它可以搜索社区插件、比较功能重复、识别聚合 bundle 提供的子插件、检查批量安装冲突、审计实际使用量，并生成插件全景关系图。
 灵感来源自 claude code 的命令 "/doctor" 以及无数次下载插件造成的崩溃和冲突。
 
