@@ -60,6 +60,66 @@ dsh web
 
 The agent selects the appropriate tool automatically.
 
+## Examples
+
+### Search and check overlap
+
+```text
+Find me a memory plugin and check whether it overlaps with plugins in my web profile.
+```
+
+The result lists candidates, match reasons, overlap scores against local plugins, and keep/remove commands. Spec generation and dedupe execution require confirmation.
+
+### Guard a multi-plugin install
+
+```text
+I want to install these repositories together. Check for conflicts first:
+github:owner/plugin-a
+github:owner/plugin-b
+github:owner/plugin-c
+```
+
+If GitHub returns `403/429`, or repository metadata cannot be read, the result is `INSTALL BLOCKED` with token and rate-limit-reset guidance. Unknown metadata is never waved through.
+
+### View plugin relationships
+
+```text
+How are the plugins I installed earlier related? Which ones are similar?
+```
+
+`plugin_landscape` returns a relation graph. Nodes include Chinese function summaries; edges explain whether similarity comes from descriptions, capabilities, or dependencies. With an intent, community candidates join as dashed nodes.
+
+### Understand an aggregate bundle
+
+```text
+I need a task board. Does my installed UI bundle already provide one?
+```
+
+The recommendation path reads plugin-shaped dependencies of installed aggregate bundles. When a bundle already supplies the capability, the report shows its `providedBy` owner and avoids recommending an independent child removal or duplicate install.
+
+### Audit usage
+
+```text
+List plugins in my web profile that declare tools but have never been used.
+```
+
+The result is based on local finalized session logs and never uploads their contents. An active or not-yet-flushed session may not be included and is called out.
+
+## Direct DSH questions versus doctor
+
+When you simply ask DSH to “find a plugin,” the model may offer a general suggestion from context, but it does not consistently search the community, read local package metadata, quantify overlap, or inspect Cordis registration conflicts. A multi-repository install can also proceed without a preflight.
+
+With `dsh-plugin-doctor`, the same requests produce structured, reviewable evidence:
+
+| Direct DSH question | With `dsh-plugin-doctor` |
+| --- | --- |
+| Relies on model context or an ad-hoc search | Uses GitHub, cache, and registry fallbacks and identifies the source |
+| Says plugins “look similar” | Returns text, capability, and dependency similarity plus redundancy groups |
+| May miss children inside an aggregate bundle | Reads installed bundle dependencies and marks `providedBy` |
+| Installs several repositories immediately | Checks package names, tools, patch rows, and peer dependencies first; unknown state fails closed |
+| Gives no reliable usage history | Counts tool calls, sessions, and recency from local session logs |
+| Describes relationships only in prose | Renders a Mermaid graph with pair-by-pair explanations |
+
 ## Safety and degradation
 
 `plugin_install_guard` fails closed when repository metadata cannot be verified. GitHub `403` and `429` responses include token and rate-limit-reset guidance; unknown metadata is never treated as conflict-free.
