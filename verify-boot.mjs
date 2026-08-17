@@ -35,6 +35,13 @@ if (!guardGuidance.includes('Before installing two or more') || !guardGuidance.i
 }
 console.log('OK: plugin_install_guard preflight guidance registered')
 
+const graphGuidance = promptAssembly.sections.find(section => section.name === 'tool:plugin-relation-graph')?.text ?? ''
+if (!graphGuidance.includes('plugin_landscape') || !graphGuidance.includes('Chinese function explanation')) {
+  console.error('FAIL: plugin relation graph prompt guidance is missing')
+  process.exit(1)
+}
+console.log('OK: plugin relation graph guidance registered')
+
 globalThis.fetch = async input => {
   const url = String(input)
   if (url.includes('/repos/one/alpha') || url.includes('/repos/two/beta')) {
@@ -71,6 +78,7 @@ const auditExecution = await ctx.tools.execute({
 })
 console.log(`OK: plugin_usage_audit executed (isError=${auditExecution.isError})`)
 if (auditExecution.isError) {
+  console.error(auditExecution.content?.map(block => block.text ?? '').join('\n') ?? '(no error detail)')
   console.error('FAIL: plugin_usage_audit errored')
   process.exit(1)
 }

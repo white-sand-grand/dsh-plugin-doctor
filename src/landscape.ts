@@ -102,8 +102,10 @@ export function renderMermaidGraph(
   installedNames: readonly string[],
   matrix: readonly SimilarityCell[],
   threshold: number,
+  plugins: readonly CommunityPlugin[] = [],
 ): string {
   const installed = new Set(installedNames)
+  const metadata = new Map(plugins.map(plugin => [plugin.name, plugin]))
   const nodes = [...new Set(matrix.flatMap(cell => [cell.a, cell.b]))]
     .concat(installedNames.filter(name => !matrix.some(cell => cell.a === name || cell.b === name)))
   const ids = new Map(nodes.map((name, index) => [name, `n${index}`]))
@@ -111,15 +113,80 @@ export function renderMermaidGraph(
     .filter(cell => cell.overall > threshold)
     .sort((x, y) => y.overall - x.overall)
     .slice(0, MAX_GRAPH_EDGES)
-  const lines = ['graph LR']
+  const lines = [
+    'graph LR',
+    '  %% DSH plugin relation map: installed nodes are filled; candidates are outlined',
+  ]
   for (const name of nodes) {
     const id = ids.get(name)!
-    lines.push(installed.has(name) ? `  ${id}["${name}"]` : `  ${id}("${name}")`)
+    const plugin = metadata.get(name)
+    const summary = functionSummaryZh(plugin)
+    const label = `${escapeMermaid(name)}<br/>${escapeMermaid(summary.slice(0, 54))}`
+    lines.push(installed.has(name) ? `  ${id}["${label}"]` : `  ${id}("${label}")`)
   }
   for (const cell of edges) {
-    lines.push(`  ${ids.get(cell.a)!} ---|"${Math.round(cell.overall * 100)}%"| ${ids.get(cell.b)!}`)
+    const reasons = similarityReasons(cell)
+    lines.push(`  ${ids.get(cell.a)!} ---|"${Math.round(cell.overall * 100)}% · ${reasons}"| ${ids.get(cell.b)!}`)
   }
+  lines.push(
+    '  classDef installed fill:#183a52,stroke:#57c7d4,color:#f4fbff,stroke-width:2px',
+    '  classDef candidate fill:#202735,stroke:#8492a6,color:#e7edf5,stroke-dasharray:5 4',
+  )
+  for (const name of nodes) lines.push(`  class ${ids.get(name)!} ${installed.has(name) ? 'installed' : 'candidate'}`)
   return ['```mermaid', ...lines, '```'].join('\n')
+}
+
+/** Escape text embedded in a quoted Mermaid node label. */
+function escapeMermaid(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/[\r\n]+/g, ' ')
+}
+
+/** Convert common plugin metadata into a short Chinese function summary. */
+function functionSummaryZh(plugin: CommunityPlugin | undefined): string {
+  if (plugin === undefined) return '功能说明暂缺'
+  const text = `${plugin.name} ${plugin.description} ${plugin.capabilities.join(' ')}`.toLowerCase()
+  const labels = [
+    [/doctor|diagnos|health|guard/, '插件诊断、冲突检查与安装预检'],
+    [/web.ui|frontend|skin|theme/, '扩展 Web 界面、主题与交互功能'],
+    [/ssh|sftp|remote/, '远程连接、命令执行与文件传输'],
+    [/genui|generative.ui|chart|mermaid/, '生成并展示图表、表单和交互式界面'],
+    [/modlens|module|dependency/, '分析模块结构与依赖关系'],
+    [/at.file|file.reference|attachment/, '识别并引用工作区文件'],
+    [/search|fetch|browser/, '联网搜索与网页内容读取'],
+    [/session|history|memory/, '会话历史、记忆与上下文管理'],
+    [/task|todo|board/, '任务、待办和进度管理'],
+    [/base|core|harness/, '提供 DSH 核心运行能力'],
+  ].filter(([pattern]) => (pattern as RegExp).test(text)).map(([, label]) => label as string)
+  if (labels.length > 0) return [...new Set(labels)].slice(0, 2).join('；')
+  if (plugin.description.length > 0) return `功能：${plugin.description}`
+  return '功能说明暂缺'
+}
+
+/** Explain the weighted dimensions that make one edge strong. */
+function similarityReasons(cell: SimilarityCell): string {
+  const reasons: string[] = []
+  if (cell.textCosine >= 0.35) reasons.push('说明相近')
+  if (cell.capabilityJaccard > 0) reasons.push(`功能重叠${Math.round(cell.capabilityJaccard * 100)}%`)
+  if (cell.dependencyJaccard > 0) reasons.push(`依赖重叠${Math.round(cell.dependencyJaccard * 100)}%`)
+  return reasons.length > 0 ? reasons.join('、') : '综合相似'
+}
+
+/** Render a Chinese, scan-friendly explanation for the strongest relations. */
+export function renderSimilarityDetails(
+  matrix: readonly SimilarityCell[],
+  plugins: readonly CommunityPlugin[],
+  threshold: number,
+): string {
+  const metadata = new Map(plugins.map(plugin => [plugin.name, plugin]))
+  const pairs = [...matrix].filter(cell => cell.overall > threshold).sort((a, b) => b.overall - a.overall).slice(0, MAX_GRAPH_EDGES)
+  if (pairs.length === 0) return '当前没有超过阈值的插件关系。'
+  return pairs.map(cell => {
+    const left = metadata.get(cell.a)
+    const right = metadata.get(cell.b)
+    const leftDescription = functionSummaryZh(left)
+    const rightDescription = functionSummaryZh(right)
+    return `- **${cell.a}**：${leftDescription}；**${cell.b}**：${rightDescription}。相似度 **${Math.round(cell.overall * 100)}%**，${similarityReasons(cell)}。`
+  }).join('\n')
 }
 
 /**
@@ -145,25 +212,28 @@ export function renderLandscape(
   report: SimilarityReport,
   threshold: number,
   installedNames: readonly string[],
+  plugins: readonly CommunityPlugin[],
   sessionsScanned: number,
 ): string {
   const tierLines = tiers.map(entry => `- **${entry.name}** — ${entry.tier} (${entry.reason})`)
   const strongest = [...report.matrix].sort((x, y) => y.overall - x.overall).slice(0, 5)
     .map(cell => `- ${cell.a} ⇄ ${cell.b}: ${(cell.overall * 100).toFixed(0)}%`)
   return [
-    `Plugin landscape (usage from ${sessionsScanned} session log${sessionsScanned === 1 ? '' : 's'}, redundancy threshold ${Math.round(threshold * 100)}%):`,
+    `插件关系总览（扫描 ${sessionsScanned} 个会话日志，关系阈值 ${Math.round(threshold * 100)}%）`,
     '',
     '## Tiers',
     '',
     ...tierLines,
     '',
-    '## Relation graph (Mermaid)',
+    '## 插件相似度关系图',
     '',
-    renderMermaidGraph(installedNames, report.matrix, threshold),
+    renderMermaidGraph(installedNames, report.matrix, threshold, plugins),
     '',
-    '## Redundancy clusters (text fallback)',
+    '## 为什么相似',
     '',
     renderClusterTree(report.clusters),
+    '',
+    renderSimilarityDetails(report.matrix, plugins, threshold),
     '',
     strongest.length > 0 ? `Top similarity pairs:\n${strongest.join('\n')}` : '',
   ].filter(line => line !== '').join('\n')

@@ -81,3 +81,41 @@ export function toPluginRows(names: readonly string[]): CommunityPlugin[] {
     source: 'cache' as const,
   }))
 }
+
+/**
+ * Read installed package metadata for relation-graph labels and similarity.
+ * Missing manifests fall back to the name-only inventory row.
+ * @param profile - profile whose node_modules tree owns the packages.
+ * @param names - installed bundle/package names.
+ */
+export async function readPluginRows(
+  profile: string,
+  names: readonly string[],
+  env: Record<string, string | undefined> = process.env,
+): Promise<CommunityPlugin[]> {
+  const profileRoot = join(resolveDshHome(env), 'profiles', profile)
+  return await Promise.all(names.map(async (name) => {
+    const fallback = toPluginRows([name])[0]!
+    try {
+      const manifest = JSON.parse(await readFile(join(profileRoot, 'node_modules', name, 'package.json'), 'utf8')) as {
+        description?: unknown
+        keywords?: unknown
+        dependencies?: Record<string, unknown>
+        peerDependencies?: Record<string, unknown>
+      }
+      return {
+        ...fallback,
+        description: typeof manifest.description === 'string' ? manifest.description : '',
+        capabilities: Array.isArray(manifest.keywords)
+          ? manifest.keywords.filter((value): value is string => typeof value === 'string')
+          : [],
+        dependencies: [...new Set([
+          ...Object.keys(manifest.dependencies ?? {}),
+          ...Object.keys(manifest.peerDependencies ?? {}),
+        ])],
+      }
+    } catch {
+      return fallback
+    }
+  }))
+}

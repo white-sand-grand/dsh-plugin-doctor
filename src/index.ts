@@ -26,7 +26,7 @@ import type { WebFetchLike } from './http.ts'
 import { askChoiceFactory } from './interaction.ts'
 import type { UserQuestionsLike } from './interaction.ts'
 import { analyzeInstallConflicts } from './install-check.ts'
-import { readInventory, toPluginRows, resolveDshHome } from './inventory.ts'
+import { readInventory, readPluginRows, toPluginRows, resolveDshHome } from './inventory.ts'
 import { assignTiers, renderLandscape } from './landscape.ts'
 import type { PluginUsageSummary } from './landscape.ts'
 import { recommend } from './recommend.ts'
@@ -192,6 +192,12 @@ export function apply(ctx: Context, config: Config): void {
     order: 118,
     text: 'Before installing two or more DSH plugin repositories supplied by the user, call `plugin_install_guard` with every repository reference. Do not run any `dsh plugin ... add` command unless it returns `safeToInstall: true`. When it blocks or cannot inspect a repository, explain the reported risk before proposing any next action; never bypass the failed preflight.',
   }), 'plugin-doctor.install-guard-prompt')
+
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: 'tool:plugin-relation-graph',
+    order: 119,
+    text: 'When the user asks how installed plugins relate, overlap, or resemble one another, call `plugin_landscape` and present its relation graph directly. Prefer the graph over a prose-only summary, retain each plugin\'s Chinese function explanation, and explain which capabilities, descriptions, or dependencies make each connected pair similar.',
+  }), 'plugin-doctor.relation-graph-prompt')
 
   let current: () => Config = () => config
   installSettingsSection(ctx, SETTINGS_NAMESPACE, Config, config, {
@@ -559,6 +565,7 @@ export function apply(ctx: Context, config: Config): void {
             },
           },
           unusedPlugins: { type: 'array', items: { type: 'string' } },
+          inventoryNote: { type: 'string' },
         },
       },
       render: (_args, value) => [{ type: 'text', text: (value as UsageAuditOutput).report }],
@@ -634,7 +641,7 @@ export function apply(ctx: Context, config: Config): void {
       const profile = args.profile ?? 'web'
       const threshold = current().similarityThreshold ?? DEFAULT_THRESHOLD
       const inventory = await readInventory(profile)
-      const installedRows = toPluginRows(inventory.names)
+      const installedRows = await readPluginRows(profile, inventory.names)
       const candidates = args.intent === undefined ? [] : (await searchWithToken(args.intent, {}, exec.signal)).plugins
       const combined = [...candidates, ...installedRows.filter(plugin => !candidates.some(candidate => candidate.name === plugin.name))]
       const report = analyze(combined, threshold)
@@ -655,7 +662,7 @@ export function apply(ctx: Context, config: Config): void {
         .filter((plugin): plugin is CommunityPlugin => plugin !== undefined)
       const tiers = assignTiers(installedWithMetadata, usage, report)
       const output: LandscapeOutput = {
-        report: renderLandscape(tiers, report, threshold, inventory.names, audit.sessionsScanned),
+        report: renderLandscape(tiers, report, threshold, inventory.names, combined, audit.sessionsScanned),
         tiers: tiers.map(tier => ({ name: tier.name, tier: tier.tier, reason: tier.reason })),
       }
       return output

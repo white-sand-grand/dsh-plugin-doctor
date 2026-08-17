@@ -33,3 +33,10 @@ export declare function readInventory(profile: string, env?: Record<string, stri
  * @param names - installed plugin names.
  */
 export declare function toPluginRows(names: readonly string[]): CommunityPlugin[];
+/**
+ * Read installed package metadata for relation-graph labels and similarity.
+ * Missing manifests fall back to the name-only inventory row.
+ * @param profile - profile whose node_modules tree owns the packages.
+ * @param names - installed bundle/package names.
+ */
+export declare function readPluginRows(profile: string, names: readonly string[], env?: Record<string, string | undefined>): Promise<CommunityPlugin[]>;

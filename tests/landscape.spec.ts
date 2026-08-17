@@ -79,11 +79,11 @@ describe('renderMermaidGraph', () => {
     const graph = renderMermaidGraph(['alpha-plugin', 'beta-plugin', 'gamma-plugin'], matrix, 0.3)
     expect(graph).toContain('```mermaid')
     expect(graph).toContain('graph LR')
-    expect(graph).toMatch(/---\|"\d+%"\|/)
+    expect(graph).toMatch(/---\|"\d+% · /)
     // gamma shares nothing: it appears as a node but never in an edge.
     const edgeLines = graph.split('\n').filter(line => line.includes('---|'))
     expect(edgeLines).toHaveLength(1)
-    expect(edgeLines[0]).toMatch(/^ {2}n\d+ ---\|"\d+%"\| n\d+$/)
+    expect(edgeLines[0]).toMatch(/^ {2}n\d+ ---\|"\d+% · .+"\| n\d+$/)
     expect(graph).toContain('gamma-plugin')
   })
 })
@@ -107,11 +107,13 @@ describe('renderClusterTree and renderLandscape', () => {
       report,
       0.3,
       ['alpha-plugin', 'beta-plugin'],
+      [alpha, beta],
       2,
     )
     expect(text).toContain('## Tiers')
-    expect(text).toContain('## Relation graph (Mermaid)')
-    expect(text).toContain('## Redundancy clusters (text fallback)')
+    expect(text).toContain('## 插件相似度关系图')
+    expect(text).toContain('## 为什么相似')
     expect(text).toContain('12 recorded calls')
+    expect(text).toContain('功能重叠100%')
   })
 })

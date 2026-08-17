@@ -44,7 +44,9 @@ export declare function assignTiers(installed: readonly CommunityPlugin[], usage
  * @param matrix - pairwise similarity cells.
  * @param threshold - only edges above this overall similarity are drawn.
  */
-export declare function renderMermaidGraph(installedNames: readonly string[], matrix: readonly SimilarityCell[], threshold: number): string;
+export declare function renderMermaidGraph(installedNames: readonly string[], matrix: readonly SimilarityCell[], threshold: number, plugins?: readonly CommunityPlugin[]): string;
+/** Render a Chinese, scan-friendly explanation for the strongest relations. */
+export declare function renderSimilarityDetails(matrix: readonly SimilarityCell[], plugins: readonly CommunityPlugin[], threshold: number): string;
 /**
  * Render redundancy clusters as an indented text list — the fallback view for
  * surfaces that do not render Mermaid.
@@ -58,4 +60,4 @@ export declare function renderClusterTree(clusters: readonly RedundancyCluster[]
  * @param threshold - redundancy threshold used.
  * @param sessionsScanned - session logs the usage numbers came from.
  */
-export declare function renderLandscape(tiers: readonly TieredPlugin[], report: SimilarityReport, threshold: number, installedNames: readonly string[], sessionsScanned: number): string;
+export declare function renderLandscape(tiers: readonly TieredPlugin[], report: SimilarityReport, threshold: number, installedNames: readonly string[], plugins: readonly CommunityPlugin[], sessionsScanned: number): string;

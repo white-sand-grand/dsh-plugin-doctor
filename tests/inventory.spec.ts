@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { readInventory, resolveDshHome, toPluginRows } from '../src/inventory.ts'
+import { readInventory, readPluginRows, resolveDshHome, toPluginRows } from '../src/inventory.ts'
 
 describe('inventory', () => {
   it('reads dsh.profile.bundles from the profile manifest under $DSH_HOME', async () => {
@@ -34,5 +34,23 @@ describe('inventory', () => {
     const rows = toPluginRows(['a', 'b'])
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ name: 'a', stars: 0 })
+  })
+
+  it('reads installed package descriptions, keywords, and dependencies', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'dsh-rec-'))
+    const root = join(home, 'profiles', 'web', 'node_modules', 'dsh-plugin-graph')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'package.json'), JSON.stringify({
+      description: 'Visualize plugin dependencies',
+      keywords: ['graph', 'dependency'],
+      dependencies: { alpha: '1.0.0' },
+      peerDependencies: { beta: '2.0.0' },
+    }))
+    const rows = await readPluginRows('web', ['dsh-plugin-graph'], { DSH_HOME: home })
+    expect(rows[0]).toMatchObject({
+      description: 'Visualize plugin dependencies',
+      capabilities: ['graph', 'dependency'],
+      dependencies: ['alpha', 'beta'],
+    })
   })
 })
