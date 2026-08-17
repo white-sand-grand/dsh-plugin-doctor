@@ -13,6 +13,8 @@ export interface InstallInspection {
     readonly packageJson?: unknown;
     readonly patchText?: string;
     readonly error?: string;
+    /** Network/HTTP classification used to render remediation guidance. */
+    readonly errorKind?: 'rate-limit' | 'http' | 'network' | 'unsupported';
 }
 /** One conflict found while comparing install candidates. */
 export interface InstallConflict {

@@ -40,3 +40,5 @@ export declare function toPluginRows(names: readonly string[]): CommunityPlugin[
  * @param names - installed bundle/package names.
  */
 export declare function readPluginRows(profile: string, names: readonly string[], env?: Record<string, string | undefined>): Promise<CommunityPlugin[]>;
+/** Read top-level installs and DSH plugin-shaped dependencies from aggregates. */
+export declare function readRecommendRows(profile: string, names: readonly string[], env?: Record<string, string | undefined>): Promise<CommunityPlugin[]>;

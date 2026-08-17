@@ -145,12 +145,15 @@ export class CommunitySource {
   async inspectInstallRefs(refs: readonly string[], signal: AbortSignal | undefined): Promise<InstallInspection[]> {
     return Promise.all(refs.map(async ref => {
       const repo = normalizeGitHubRepo(ref)
-      if (repo === undefined) return { ref, error: 'only GitHub repository refs or URLs can be inspected' }
+      if (repo === undefined) return { ref, error: 'only GitHub repository refs or URLs can be inspected', errorKind: 'unsupported' as const }
       try {
         const metadata = await fetchJson(this.deps, `https://api.github.com/repos/${repo}`, signal) as { default_branch?: unknown }
         const branch = typeof metadata.default_branch === 'string' && metadata.default_branch.length > 0 ? metadata.default_branch : 'main'
         const packageResult = await fetchText(this.deps, `https://raw.githubusercontent.com/${repo}/${encodeURI(branch)}/package.json`, signal, 'application/json')
-        if (!(packageResult.status >= 200 && packageResult.status < 300)) throw new Error(`package.json returned HTTP ${packageResult.status}`)
+        if (!(packageResult.status >= 200 && packageResult.status < 300)) {
+          const errorKind = packageResult.status === 403 || packageResult.status === 429 ? 'rate-limit' as const : 'http' as const
+          return { ref, repo, error: `package.json returned HTTP ${packageResult.status}`, errorKind }
+        }
         const packageJson = JSON.parse(packageResult.text) as { dsh?: { bundle?: { patch?: unknown } } }
         const declaredPatch = packageJson.dsh?.bundle?.patch
         const patchPath = typeof declaredPatch === 'string' ? declaredPatch.replace(/^\.\//, '') : 'cordis.patch.yml'
@@ -163,7 +166,8 @@ export class CommunitySource {
           patchText: patchResult.status >= 200 && patchResult.status < 300 ? patchResult.text : '',
         }
       } catch (error) {
-        return { ref, repo, error: errorMessage(error) }
+        const message = errorMessage(error)
+        return { ref, repo, error: message, errorKind: /\b(?:403|429)\b|rate.?limit/i.test(message) ? 'rate-limit' as const : 'network' as const }
       }
     }))
   }

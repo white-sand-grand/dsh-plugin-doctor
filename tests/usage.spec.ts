@@ -39,6 +39,7 @@ describe('auditToolUsage', () => {
     expect(recommend.calls).toBe(3)
     expect(recommend.sessions).toBe(2)
     expect(Number.isNaN(Date.parse(recommend.lastUsed))).toBe(false)
+    expect(audit.note).toContain('active session')
   })
 
   it('skips corrupt artifacts and salvages torn-tail logs instead of failing the audit', async () => {

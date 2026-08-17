@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { readInventory, readPluginRows, resolveDshHome, toPluginRows } from '../src/inventory.ts'
+import { readInventory, readPluginRows, readRecommendRows, resolveDshHome, toPluginRows } from '../src/inventory.ts'
 
 describe('inventory', () => {
   it('reads dsh.profile.bundles from the profile manifest under $DSH_HOME', async () => {
@@ -52,5 +52,18 @@ describe('inventory', () => {
       capabilities: ['graph', 'dependency'],
       dependencies: ['alpha', 'beta'],
     })
+  })
+
+  it('expands plugin-shaped dependencies from an aggregate bundle and records ownership', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'dsh-rec-'))
+    const aggregate = join(home, 'profiles', 'web', 'node_modules', 'dsh-web-ui-all')
+    const child = join(home, 'profiles', 'web', 'node_modules', '@linxin666', 'dsh-client-ui-task-board')
+    await mkdir(aggregate, { recursive: true })
+    await mkdir(child, { recursive: true })
+    await writeFile(join(aggregate, 'package.json'), JSON.stringify({ description: 'All UI', dependencies: { '@linxin666/dsh-client-ui-task-board': '1.0.0', lodash: '1.0.0' } }))
+    await writeFile(join(child, 'package.json'), JSON.stringify({ description: 'Task board', keywords: ['task', 'board'], dsh: { tools: ['task_board'] } }))
+    const rows = await readRecommendRows('web', ['dsh-web-ui-all'], { DSH_HOME: home })
+    expect(rows.map(row => row.name)).toEqual(['dsh-web-ui-all', '@linxin666/dsh-client-ui-task-board'])
+    expect(rows[1]).toMatchObject({ providedBy: 'dsh-web-ui-all', description: 'Task board' })
   })
 })

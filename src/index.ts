@@ -26,7 +26,7 @@ import type { WebFetchLike } from './http.ts'
 import { askChoiceFactory } from './interaction.ts'
 import type { UserQuestionsLike } from './interaction.ts'
 import { analyzeInstallConflicts } from './install-check.ts'
-import { readInventory, readPluginRows, toPluginRows, resolveDshHome } from './inventory.ts'
+import { readInventory, readPluginRows, readRecommendRows, toPluginRows, resolveDshHome } from './inventory.ts'
 import { assignTiers, renderLandscape } from './landscape.ts'
 import type { PluginUsageSummary } from './landscape.ts'
 import { recommend } from './recommend.ts'
@@ -440,7 +440,7 @@ export function apply(ctx: Context, config: Config): void {
       const decision = await recommend(
         args.intent,
         search,
-        toPluginRows(inventory.names),
+        await readRecommendRows(profile, inventory.names),
         current().similarityThreshold ?? DEFAULT_THRESHOLD,
         profile,
         hooks,

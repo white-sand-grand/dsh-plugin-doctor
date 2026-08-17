@@ -44,6 +44,13 @@ describe('analyzeInstallConflicts', () => {
     expect(result.report).toContain('could not be inspected')
   })
 
+  it('explains how to recover from GitHub rate limiting while staying blocked', () => {
+    const result = analyzeInstallConflicts([{ ref: 'github:one/alpha', error: 'package.json returned HTTP 403', errorKind: 'rate-limit' }])
+    expect(result.safeToInstall).toBe(false)
+    expect(result.report).toContain('githubTokenEnv')
+    expect(result.report).toContain('limit reset')
+  })
+
   it('passes independent plugins with different tools and patch rows', () => {
     const result = analyzeInstallConflicts([
       inspection('github:one/alpha', { name: 'alpha', dsh: { tools: ['alpha_tool'] } }, '- insert:\n    - id: alpha-row\n      name: alpha-plugin\n      config:\n        name: shared-config-value\n'),

@@ -29,6 +29,8 @@ export interface CommunityPlugin {
   readonly updatedAt: string
   /** Provenance of this record. */
   readonly source: PluginSource
+  /** Aggregate package that supplies this installed child, when applicable. */
+  readonly providedBy?: string
 }
 
 /** Filters accepted by community search. */

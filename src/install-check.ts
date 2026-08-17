@@ -14,6 +14,8 @@ export interface InstallInspection {
   readonly packageJson?: unknown
   readonly patchText?: string
   readonly error?: string
+  /** Network/HTTP classification used to render remediation guidance. */
+  readonly errorKind?: 'rate-limit' | 'http' | 'network' | 'unsupported'
 }
 
 /** One conflict found while comparing install candidates. */
@@ -120,6 +122,10 @@ export function analyzeInstallConflicts(inspections: readonly InstallInspection[
     '',
     `Inspected: ${inspected.length}/${inspections.length}`,
   ]
+  const rateLimited = inspections.some(inspection => inspection.errorKind === 'rate-limit')
+  if (rateLimited) {
+    lines.push('', 'GitHub API rate limit reached. Configure a token via the plugin doctor setting `githubTokenEnv`, wait for the limit reset, then retry. Inspection failures remain blocked until repository metadata can be verified.')
+  }
   if (conflicts.length > 0) {
     lines.push('', ...conflicts.map(conflict => `- [${conflict.severity.toUpperCase()}] ${conflict.detail} (${conflict.refs.join(', ')})`))
   }

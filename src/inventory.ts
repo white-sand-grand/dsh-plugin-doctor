@@ -119,3 +119,38 @@ export async function readPluginRows(
     }
   }))
 }
+
+/** Read top-level installs and DSH plugin-shaped dependencies from aggregates. */
+export async function readRecommendRows(
+  profile: string,
+  names: readonly string[],
+  env: Record<string, string | undefined> = process.env,
+): Promise<CommunityPlugin[]> {
+  const root = join(resolveDshHome(env), 'profiles', profile, 'node_modules')
+  const rows = new Map<string, CommunityPlugin>()
+  const providedBy = new Map<string, string>()
+  const queue = [...names]
+  while (queue.length > 0) {
+    const name = queue.shift()!
+    if (rows.has(name)) continue
+    const fallback = toPluginRows([name])[0]!
+    try {
+      const manifest = JSON.parse(await readFile(join(root, name, 'package.json'), 'utf8')) as {
+        description?: unknown; keywords?: unknown; dependencies?: Record<string, unknown>; peerDependencies?: Record<string, unknown>; dsh?: unknown
+      }
+      const dependencyNames = [...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.peerDependencies ?? {})]
+      const pluginDeps = dependencyNames.filter(dep => dep.includes('dsh-') || dep.startsWith('@deepseek-ai/dsh-') || dep.startsWith('@linxin666/dsh-'))
+      for (const dep of pluginDeps) {
+        if (!providedBy.has(dep)) providedBy.set(dep, name)
+        queue.push(dep)
+      }
+      rows.set(name, { ...fallback, description: typeof manifest.description === 'string' ? manifest.description : '', capabilities: Array.isArray(manifest.keywords) ? manifest.keywords.filter((value): value is string => typeof value === 'string') : [], dependencies: dependencyNames })
+    } catch {
+      rows.set(name, fallback)
+    }
+  }
+  return [...rows.values()].map(row => {
+    const owner = providedBy.get(row.name)
+    return owner === undefined ? row : { ...row, providedBy: owner }
+  })
+}

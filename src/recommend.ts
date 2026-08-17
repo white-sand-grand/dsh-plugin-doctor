@@ -230,28 +230,30 @@ async function dedupeBranch(
   // 'keep' confirmed by the user, or interaction unavailable → same outcome,
   // differing in the hint and in whether the host may execute the mutations.
   const removals = overlappingClusters.map(({ keeper }) => keeper.remove)
+  const protectedRemovals = new Set(combined.filter(plugin => plugin.providedBy !== undefined).map(plugin => plugin.name))
+  const actionableRemovals = removals.filter(name => !protectedRemovals.has(name))
   const keeperAdds = overlappingClusters
     .map(({ keeper }) => keeper.keep)
     .filter(name => !installedNames.has(name))
     .map(name => combined.find(plugin => plugin.name === name)?.installRef ?? name)
-  const commands = removals.map(name => `dsh plugin --profile ${profile} remove ${name}`).join('\n')
+  const commands = actionableRemovals.map(name => `dsh plugin --profile ${profile} remove ${name}`).join('\n')
   const installBlock = keeperAdds.length === 0 ? '' : `\n\nThe keeper is not installed yet:\n\n\`\`\`sh\n${
     keeperAdds.map(spec => `dsh plugin --profile ${profile} add ${spec}`).join('\n')
   }\n\`\`\``
   const hint = choice === 'keep' ? '' : '\nTo consolidate these into one purpose-built plugin instead, just say so.\n'
   return {
     branch: 'dedupe',
-    removals,
+    removals: actionableRemovals,
     confirmed: choice === 'keep',
     actions: choice === 'keep'
       ? [
           ...keeperAdds.map(spec => ({ kind: 'add' as const, spec })),
-          ...removals.map(name => ({ kind: 'remove' as const, spec: name })),
+          ...actionableRemovals.map(name => ({ kind: 'remove' as const, spec: name })),
         ]
       : [],
     report: header
       + (choice === 'keep' ? 'Confirmed by you: de-duplicate.\n\n' : 'Community matches exist but overlap heavily with your setup. Recommendation: de-duplicate.\n\n')
-      + `${facts}\n\nKeep the winner, remove the rest:\n\n\`\`\`sh\n${commands}\n\`\`\`${installBlock}${hint}`,
+      + `${facts}\n\nKeep the winner, remove the rest:${commands.length > 0 ? `\n\n\`\`\`sh\n${commands}\n\`\`\`` : ' (the redundant entry is supplied by an aggregate bundle; remove that bundle instead)'}${actionableRemovals.length < removals.length ? `\n\nProtected child plugins: ${removals.filter(name => protectedRemovals.has(name)).map(name => `\`${name}\``).join(', ')}.` : ''}${installBlock}${hint}`,
   }
 }
 

@@ -1,94 +1,103 @@
 # dsh-plugin-doctor
 
-**中文版：[README.md](README.md)**
+**Chinese version: [README.md](README.md)**
 
-A "doctor" for the DSH plugin ecosystem — inspired by Claude Code's `/doctor` command. Tell it what you need: it finds a matching community plugin; if something you installed overlaps with it, it tells you which one to keep and which to remove; and if the community has nothing, it hands you a ready-to-follow spec for building it yourself.
+`dsh-plugin-doctor` is a diagnostics and decision tool for the DSH plugin ecosystem. It searches community plugins, compares overlap, understands aggregate bundles, guards multi-plugin installs, audits real usage, and renders a plugin landscape graph.
 
-> ✅ **Status: fully working.** Verified end-to-end on DSH v0.1.0-rc.6: build, 54 tests, real tool registration and execution, and a live Web-UI conversation test. Install and go.
->
-> ⚠️ DSH is a v0.1 developer preview and its API may change. The plugin guards itself (degrades gracefully when a capability is missing), but small adjustments may be needed if DSH changes significantly.
+Current version: `0.8.0`. Requires Node.js `>=22.19`. The plugin is read-only by default: it does not start Web UI or mutate a profile on its own.
 
-## What it does for you
+## Install
 
-| You say | It does |
-| --- | --- |
-| "Find me a memory plugin" | Searches the community and returns the best matches, with install commands |
-| "Does this overlap with what I installed?" | Lays out the overlap facts, then **asks how to proceed**: keep A remove B (with commands; executed for real once `allowExecuteActions` is on) / consolidate the duplicates into one new plugin you build (integration spec) / leave as-is |
-| "I need X but can't find it" | Lists near-miss competitors and what each lacks, **asks whether you want to self-develop**, and only after you confirm generates the build-it-yourself spec |
-| "Which of my plugins never get used?" | Scans local session logs for real tool-call counts and suggests removal for zero-call plugins (purely local) |
-| "How are the plugins I installed earlier related?" | Directly renders the similarity graph: every node has a Chinese function summary, and every edge explains whether descriptions, capabilities, or dependencies overlap |
-| "Show me my overall plugin landscape" | Visualization: a similarity relation graph (Mermaid with a text fallback) plus a four-tier classification — core / active / idle / review — from real usage × irreplaceability |
-
-## Up and running in one minute
+Run this in the same environment that runs DSH:
 
 ```sh
 dsh plugin --profile web add github:white-sand-grand/dsh-plugin-doctor
+```
+
+Start DSH Web yourself when needed:
+
+```sh
 dsh web
 ```
 
-Open `http://127.0.0.1:3080` and just talk to it, e.g.:
+Open `http://127.0.0.1:3080` and ask questions in natural language. The plugin does not start Web UI or change other profile plugins.
 
-> 帮我找一个记忆插件，并检查是否和已安装的重复
+## Update
 
-The agent picks the right tool automatically — you just read the answer.
-
-## The six tools it adds
-
-You don't need to memorize these — the agent chooses. Listed so you know the boundaries:
-
-- **`plugin_community_search`** — searches community plugins (GitHub repos tagged `dsh-plugin`); returns description, capability tags, stars, last update.
-- **`plugin_similarity_analyze`** — compares a set of plugins for functional overlap and finds redundancy groups.
-- **`plugin_recommend`** — combines the two above into a final decision. Anything that would emit a spec or remove a plugin is gated on your explicit choice (a choice card in the Web UI); non-interactive environments fall back to plain recommendations. Commands are printed by default; with `allowExecuteActions` on, a confirmed keep/remove choice is executed for real (install the keeper, remove the duplicates, per-action result reported). Non-interactive paths never execute.
-- **`plugin_install_guard`** — when several repository addresses are supplied for one installation request, inspect their `package.json`, declared tools, Cordis patch rows, and peer dependencies before any `dsh plugin ... add` command. Duplicate registrations or incompatible peer majors return **INSTALL BLOCKED** with the reason. This tool is read-only and never installs anything.
-- **`plugin_usage_audit`** — reads DSH's local session logs (zstd-compressed JSONL) and reports how often each tool was really invoked and when. Tools are attributed to plugins via each package's `dsh.tools` declaration; a declared plugin with zero calls is flagged as removable. Corrupt old logs are skipped, torn logs are salvaged up to their last complete frame, and the audit never aborts on a single bad artifact. **Compatibility**: decompression needs `node:zlib` zstd support (Node ≥22.15). On older Node — common when dsh is launched via `npx` — the plugin still loads and every other tool works; the usage audit degrades and says why in its report.
-- **`plugin_landscape`** — the big picture, invoked directly when you ask how earlier installs relate or which plugins are similar. Installed and community nodes use distinct styling; every node carries a Chinese function summary, every edge labels the total score and the overlapping description/capabilities/dependencies, and a Chinese pair-by-pair explanation follows the graph. The four tiers remain: `core`, `active`, `idle`, and `review`. With an optional intent, community matches join as dashed nodes.
-
-## Configuration (optional — defaults just work)
-
-Every setting has a sensible default; feel free to skip this section. To change one, edit your profile's patch layer:
-
-| Field | Default | In plain words |
-| --- | --- | --- |
-| `githubTokenEnv` | `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN` | Name of the env var holding your GitHub token. With a token, the search quota rises from 60 to 5000 requests/hour |
-| `githubToken` | none | Paste the token literally (not recommended in files — prefer the env-var way above) |
-| `similarityThreshold` | `0.8` | How much overlap counts as "redundant". Lower it to get more aggressive dedupe advice |
-| `cacheTtlMinutes` | `30` | How long search results are cached, to spare the GitHub quota |
-| `enableRegistryFallback` | `true` | Whether to fall back to third-party registries when GitHub is unreachable (live page scrape first, built-in static snapshot last) |
-| `allowExecuteActions` | `false` | Whether confirmed add/remove actions are **actually executed** via the `dsh plugin` CLI instead of only printed. Requires two conditions: this switch on **and** your explicit confirmation in the interactive prompt; degraded non-interactive paths never execute. The server process needs `dsh` on PATH |
-
-**Adding a token** (recommended): GitHub → Settings → Developer settings → Personal access tokens, generate one (no scopes needed), then:
-
-```bash
-echo "DSH_PLUGIN_DOCTOR_GITHUB_TOKEN: ghp_yourtoken" > ~/.dsh/.credentials.yaml
-chmod 600 ~/.dsh/.credentials.yaml
-```
-
-## What happens on bad networks / rate limits
-
-Nothing crashes. The plugin falls back in four layers, in order:
-
-1. Normal: live GitHub queries (cached for 30 minutes).
-2. Rate-limited or unreachable: serve the last cached results.
-3. No cache at all: scrape the third-party registry pages (dshplugin.world, dsh.pub) for plugin repository links.
-4. Registries unreachable too: serve the built-in static snapshot of the community list.
-
-Whichever layer serves you, the answer says so — seeing a "degraded" note is informational, not a failure, and DSH itself is never affected.
-
-## Contributing
+Use this deterministic refresh sequence:
 
 ```sh
-git clone git@github.com:white-sand-grand/dsh-plugin-doctor.git
-cd dsh-plugin-doctor
-pnpm install
-pnpm run build     # compile
-pnpm test          # run tests
-node verify-boot.mjs   # smoke: register and invoke once on a real DSH runtime
+dsh plugin --profile web remove dsh-plugin-doctor
+dsh plugin --profile web add github:white-sand-grand/dsh-plugin-doctor
 ```
 
-Why the similarity algorithm avoids LLM embeddings, how the code is organized, and how it maps onto the DSH plugin conventions live in [ARCHITECTURE.md](ARCHITECTURE.md). See [CONTRIBUTING.md](CONTRIBUTING.md) before sending changes and [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md) before publishing.
+Start Web yourself after updating if needed:
 
-Note: create `node_modules` in one environment only (Windows or WSL — mixing them breaks it).
+```sh
+dsh web
+```
+
+## Capabilities
+
+| Need | Behavior |
+| --- | --- |
+| Find a plugin | Searches GitHub `dsh-plugin` repositories and fallback sources; returns match, capabilities, stars, update time, and install reference |
+| Check functional overlap | Compares description text, capability tags, and dependencies, then recommends dedupe or self-development |
+| Ask how installs relate | Renders a similarity graph with Chinese function summaries and edge explanations |
+| Check several repositories before installing | Inspects package names, tools, Cordis patch rows, and peer dependencies; conflicts or unknown metadata return `INSTALL BLOCKED` |
+| Understand an aggregate bundle | Expands installed DSH-shaped dependencies; child plugins carry `providedBy` and are not recommended for independent removal |
+| Audit actual usage | Scans finalized local session logs and attributes tool calls through `dsh.tools` |
+| See the overall plugin landscape | Renders a Mermaid relation graph and `core` / `active` / `idle` / `review` tiers |
+
+## Tools
+
+- `plugin_community_search`: community search and filters.
+- `plugin_similarity_analyze`: similarity, redundancy groups, and irreplaceability.
+- `plugin_recommend`: install, dedupe, or self-development decisions with aggregate-bundle awareness.
+- `plugin_install_guard`: read-only preflight for multi-repository installs.
+- `plugin_usage_audit`: local session usage audit.
+- `plugin_landscape`: installed/community relation graph and usage tiers.
+
+The agent selects the appropriate tool automatically.
+
+## Safety and degradation
+
+`plugin_install_guard` fails closed when repository metadata cannot be verified. GitHub `403` and `429` responses include token and rate-limit-reset guidance; unknown metadata is never treated as conflict-free.
+
+Community search falls back in order: live GitHub, process cache, third-party registry pages, then a built-in snapshot. The response identifies the data source used.
+
+The usage audit reads only session files already flushed to disk. An active or not-yet-flushed session may be absent and is called out in the report. Corrupt artifacts are skipped and counted; runtimes without zstd support skip compressed logs without preventing the other tools from loading.
+
+## Optional configuration
+
+| Field | Default | Purpose |
+| --- | --- | --- |
+| `githubTokenEnv` | `DSH_PLUGIN_DOCTOR_GITHUB_TOKEN` | Environment variable containing a GitHub token |
+| `githubToken` | none | Literal token; prefer the environment variable |
+| `similarityThreshold` | `0.8` | Similarity threshold for redundancy |
+| `cacheTtlMinutes` | `30` | Community search cache lifetime |
+| `enableRegistryFallback` | `true` | Enable registry and snapshot fallbacks |
+| `allowExecuteActions` | `false` | Permit confirmed interactive add/remove actions; default is report-only |
+
+Prefer an environment variable and keep tokens out of repositories:
+
+```sh
+export DSH_PLUGIN_DOCTOR_GITHUB_TOKEN='your GitHub token'
+```
+
+## Development
+
+```sh
+git clone https://github.com/white-sand-grand/dsh-plugin-doctor.git
+cd dsh-plugin-doctor
+pnpm install
+pnpm test
+pnpm run build
+node verify-boot.mjs
+```
+
+Current verification baseline: `56` tests pass, TypeScript builds, and all six tools register and pass the smoke invocation. See [ARCHITECTURE.md](ARCHITECTURE.md) for the algorithm and data flow, and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules. Do not share one `node_modules` between Windows and WSL.
 
 ## License
 
-MIT. Forks welcome — tag your repo with `dsh-plugin` so this plugin (and the community) can find you.
+MIT.
