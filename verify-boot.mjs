@@ -42,6 +42,13 @@ if (!graphGuidance.includes('plugin_landscape') || !graphGuidance.includes('Chin
 }
 console.log('OK: plugin relation graph guidance registered')
 
+const issueGuidance = promptAssembly.sections.find(section => section.name === 'tool:plugin-official-issues')?.text ?? ''
+if (!issueGuidance.includes('official GitHub') || !issueGuidance.includes('current session')) {
+  console.error('FAIL: official issue guidance is missing')
+  process.exit(1)
+}
+console.log('OK: official issue safety guidance registered')
+
 globalThis.fetch = async input => {
   const url = String(input)
   if (url.includes('/repos/one/alpha') || url.includes('/repos/two/beta')) {

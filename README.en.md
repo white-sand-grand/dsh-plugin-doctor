@@ -5,8 +5,9 @@
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
 `dsh-plugin-doctor` is a diagnostics and decision tool for the DSH plugin ecosystem. It searches community plugins, compares overlap, understands aggregate bundles, guards multi-plugin installs, audits real usage, and renders a plugin landscape graph.
+Inspired by Claude Code's `/doctor` command and repeated plugin conflicts and crashes caused by installing incompatible extensions.
 
-Current version: `0.8.0`. Requires Node.js `>=22.19`. The plugin is read-only by default: it does not start Web UI or mutate a profile on its own.
+Current version: `1.0.0`. Requires Node.js `>=22.19`. The plugin is read-only by default: it does not start Web UI or mutate a profile on its own.
 
 ## Install
 
@@ -50,6 +51,7 @@ dsh web
 | Understand an aggregate bundle | Expands installed DSH-shaped dependencies; child plugins carry `providedBy` and are not recommended for independent removal |
 | Audit actual usage | Scans finalized local session logs and attributes tool calls through `dsh.tools` |
 | See the overall plugin landscape | Renders a Mermaid relation graph and `core` / `active` / `idle` / `review` tiers |
+| Learn about known official issues before installing | Before search, recommendation, or supplied repository links lead to an install, asks whether to inspect open issues and shows relevant official links |
 
 ## Tools
 
@@ -62,7 +64,21 @@ dsh web
 
 The agent selects the appropriate tool automatically.
 
+## Official issue check before installation
+
+When a user searches for an installable plugin, asks for a recommendation, or sends repository links to install, the plugin first asks whether to inspect open issues in the official repositories. It matches issue titles and bodies against the requested capability or symptom and shows official links, such as an unresolved report about recursive file watching causing Web UI stalls.
+
+If the user explicitly chooses “do not check this session,” the prompt is suppressed for the rest of that session and returns in a new session. Dismissed prompts or unavailable interaction are reported as incomplete checks, never as proof that no known issue exists. An unavailable Issue API affects only the warning; it never bypasses the install guard's fail-closed behavior.
+
 ## Examples
+
+### Ask about official issues before installing (real incident pattern)
+
+```text
+I want to install a Web UI plugin. Check the official repository for unresolved issues first so we do not repeat history-load failures, unavailable model selection, or stuck file operations.
+```
+
+The plugin first asks whether to check official open issues. In the real incident pattern, an official repository contained an open issue closely matching “right-side file panel stalls and history loading fails”: the root cause was not the remote Web plugin, but a file-panel plugin whose recursive watcher consumed resources. The report uses a blurred plugin name such as `@example-org/ui-panel-plugin` and links to the official [Issue #119](https://github.com/zhu1090093659/dsh-web-ui/issues/119) for verification. After an explicit refusal in the current session, later install requests do not repeat the prompt.
 
 ### Search and check overlap
 

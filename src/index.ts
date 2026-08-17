@@ -26,6 +26,8 @@ import type { WebFetchLike } from './http.ts'
 import { askChoiceFactory } from './interaction.ts'
 import type { UserQuestionsLike } from './interaction.ts'
 import { analyzeInstallConflicts } from './install-check.ts'
+import { searchOfficialIssues } from './issues.ts'
+import type { OfficialIssue } from './issues.ts'
 import { readInventory, readPluginRows, readRecommendRows, toPluginRows, resolveDshHome } from './inventory.ts'
 import { assignTiers, renderLandscape } from './landscape.ts'
 import type { PluginUsageSummary } from './landscape.ts'
@@ -107,6 +109,16 @@ interface SearchHit {
 interface SearchOutput {
   plugins: SearchHit[]
   degraded?: string
+  officialIssues?: OfficialIssueOutput[]
+  officialIssueNote?: string
+}
+
+interface OfficialIssueOutput {
+  repo: string
+  title: string
+  url: string
+  updatedAt: string
+  matches: string[]
 }
 
 /** Wire payload of `plugin_similarity_analyze`. */
@@ -187,6 +199,8 @@ interface LandscapeOutput {
  * @param config - deployment configuration.
  */
 export function apply(ctx: Context, config: Config): void {
+  const declinedIssueReview = new WeakSet<object>()
+  const noAgentSession = {}
   ctx.effect(() => ctx.systemPrompt.section({
     name: 'tool:plugin-install-guard',
     order: 118,
@@ -198,6 +212,12 @@ export function apply(ctx: Context, config: Config): void {
     order: 119,
     text: 'When the user asks how installed plugins relate, overlap, or resemble one another, call `plugin_landscape` and present its relation graph directly. Prefer the graph over a prose-only summary, retain each plugin\'s Chinese function explanation, and explain which capabilities, descriptions, or dependencies make each connected pair similar.',
   }), 'plugin-doctor.relation-graph-prompt')
+
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: 'tool:plugin-official-issues',
+    order: 120,
+    text: 'Before recommending or installing a plugin, including after a community search or when the user supplies repository links, let `plugin-doctor` ask whether to check the official GitHub repositories for open issues relevant to the requested capability or symptom. If the user explicitly chooses not to check, do not ask again during the current session. Present matching issue URLs and unresolved-risk context before any install command; an unavailable issue lookup is a warning, not permission to claim that no issue exists.',
+  }), 'plugin-doctor.official-issues-prompt')
 
   let current: () => Config = () => config
   installSettingsSection(ctx, SETTINGS_NAMESPACE, Config, config, {
@@ -225,6 +245,28 @@ export function apply(ctx: Context, config: Config): void {
       return { plugins: [], degraded: `${result.degraded}; registry fallback disabled` }
     }
     return result
+  }
+
+  const issueReview = async (intent: string, refs: readonly string[], exec: ToolRunContext): Promise<{ issues: readonly OfficialIssue[]; note?: string }> => {
+    const session = typeof exec.agent === 'object' && exec.agent !== null ? exec.agent : noAgentSession
+    if (declinedIssueReview.has(session)) return { issues: [] }
+    const ask = askChoiceFactory(ctx.get('userQuestions') as UserQuestionsLike | undefined)
+    const choice = await ask(
+      'Before suggesting or installing plugins, should I check their official GitHub repositories for open issues that may explain known failures or compatibility risks?',
+      'Official issue safety check',
+      [
+        { key: 'check', label: 'Check official open issues', description: 'Searches each official repository and reports relevant unresolved issues.' },
+        { key: 'skip', label: 'Do not check this session', description: 'Skips this reminder for the rest of the current session.' },
+      ],
+      exec.signal,
+    )
+    if (choice === 'skip') {
+      declinedIssueReview.add(session)
+      return { issues: [] }
+    }
+    if (choice !== 'check') return { issues: [], note: 'Official issue check was not completed; no issue lookup was performed.' }
+    await refreshToken()
+    return searchOfficialIssues({ web: ctx.get('web') as WebFetchLike | undefined, get token() { return token } }, refs, intent, exec.signal)
   }
 
   ctx.tools.register(defineTool({
@@ -273,6 +315,20 @@ export function apply(ctx: Context, config: Config): void {
             },
           },
           degraded: { type: 'string' },
+          officialIssues: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                repo: { type: 'string', required: true },
+                title: { type: 'string', required: true },
+                url: { type: 'string', required: true },
+                updatedAt: { type: 'string' },
+                matches: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{ type: 'text', text: renderSearch(value as SearchOutput) }],
@@ -283,6 +339,7 @@ export function apply(ctx: Context, config: Config): void {
         minStars: args.minStars,
         updatedWithinDays: args.updatedWithinDays,
       }, exec.signal)
+      const issueReviewResult = await issueReview(args.intent, result.plugins.map(plugin => plugin.repo), exec)
       const output: SearchOutput = {
         plugins: result.plugins.map(plugin => ({
           name: plugin.name,
@@ -294,7 +351,8 @@ export function apply(ctx: Context, config: Config): void {
           updatedAt: plugin.updatedAt,
           source: plugin.source,
         })),
-        ...(result.degraded === undefined ? {} : { degraded: result.degraded }),
+        ...(result.degraded === undefined && issueReviewResult.note === undefined ? {} : { degraded: [result.degraded, issueReviewResult.note].filter((note): note is string => note !== undefined).join(' ') }),
+        ...(issueReviewResult.issues.length === 0 ? {} : { officialIssues: issueReviewResult.issues.map(issue => ({ ...issue, matches: [...issue.matches] })) }),
       }
       return output
     },
@@ -433,6 +491,7 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       const profile = args.profile ?? 'web'
       const search = await searchWithToken(args.intent, {}, exec.signal)
+      const issueReviewResult = await issueReview(args.intent, search.plugins.map(plugin => plugin.repo), exec)
       const inventory = await readInventory(profile)
       const hooks: DecisionHooks = {
         askChoice: askChoiceFactory(ctx.get('userQuestions') as UserQuestionsLike | undefined),
@@ -447,6 +506,7 @@ export function apply(ctx: Context, config: Config): void {
         exec.signal,
       )
       let report = inventory.note === undefined ? decision.report : `> Local inventory: ${inventory.note}\n\n${decision.report}`
+      report += renderOfficialIssueNotice(issueReviewResult.issues, issueReviewResult.note)
       const executed: string[] = []
       if (current().allowExecuteActions === true && decision.confirmed && decision.actions.length > 0) {
         for (const action of decision.actions) {
@@ -511,6 +571,7 @@ export function apply(ctx: Context, config: Config): void {
     isConcurrencySafe: () => true,
     async execute(args, exec) {
       const sourceRefs = [...new Set(args.refs.map(ref => ref.trim()).filter(ref => ref.length > 0))]
+      const issueReviewResult = await issueReview('plugin installation', sourceRefs, exec)
       const inspections = await source.inspectInstallRefs(sourceRefs, exec.signal)
       const result = analyzeInstallConflicts(inspections)
       const output: InstallGuardOutput = {
@@ -523,7 +584,7 @@ export function apply(ctx: Context, config: Config): void {
           refs: [...conflict.refs],
           detail: conflict.detail,
         })),
-        report: result.report,
+        report: result.report + renderOfficialIssueNotice(issueReviewResult.issues, issueReviewResult.note),
       }
       return output
     },
@@ -689,7 +750,14 @@ function renderSearch(value: SearchOutput): string {
   return [
     value.degraded === undefined ? '' : `> ${value.degraded}\n`,
     lines.length === 0 ? 'No community plugins matched.' : `Community plugins:\n${lines.join('\n')}`,
+    renderOfficialIssueNotice(value.officialIssues ?? [], value.officialIssueNote),
   ].filter(line => line !== '').join('\n')
+}
+
+function renderOfficialIssueNotice(issues: readonly OfficialIssue[], note?: string): string {
+  if (issues.length === 0 && note === undefined) return ''
+  const lines = issues.map(issue => `- **${issue.repo}** — [${issue.title}](${issue.url})${issue.matches.length > 0 ? ` (matched: ${issue.matches.join(', ')})` : ''}`)
+  return `\n\n### Official open-issue check\n${issues.length === 0 ? 'No matching open issues were found in the checked official repositories.' : 'These unresolved official issues may explain compatibility or runtime problems; review them before installing:'}\n${lines.join('\n')}${note === undefined ? '' : `\n\n> ${note}`}`
 }
 
 /** Markdown rendering of a usage audit. */

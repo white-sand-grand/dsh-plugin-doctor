@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-doctor",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "description": "DSH plugin doctor: community search, similarity analysis, and install/dedupe/build-it-yourself decisions for the dsh-plugin ecosystem.",
   "type": "module",
   "license": "MIT",
