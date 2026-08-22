@@ -4,10 +4,10 @@
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
-`dsh-plugin-doctor` is a diagnostics and decision tool for the DSH plugin ecosystem. It searches community plugins, compares overlap, understands aggregate bundles, guards multi-plugin installs, audits real usage, and renders a plugin landscape graph.
+`dsh-plugin-doctor` is a diagnostics and decision tool for the DSH plugin ecosystem. It searches community plugins, compares overlap, understands aggregate bundles, guards multi-plugin installs, audits real usage, renders a plugin landscape graph, and checks the local install against official releases.
 Inspired by Claude Code's `/doctor` command and repeated plugin conflicts and crashes caused by installing incompatible extensions.
 
-Current version: `1.0.0`. Requires Node.js `>=22.19`. The plugin is read-only by default: it does not start Web UI or mutate a profile on its own.
+Current version: `1.1.0`. Requires Node.js `>=22.19`. The plugin is read-only by default: it does not start Web UI or mutate a profile on its own.
 
 ## Install
 
@@ -52,6 +52,7 @@ dsh web
 | Audit actual usage | Scans finalized local session logs and attributes tool calls through `dsh.tools` |
 | See the overall plugin landscape | Renders a Mermaid relation graph and `core` / `active` / `idle` / `review` tiers |
 | Learn about known official issues before installing | Before search, recommendation, or supplied repository links lead to an install, asks whether to inspect open issues and shows relevant official links |
+| Check how far behind the official release you are | Compares the local DSH version with the latest official release; when older, reports the release changes plus installed plugins that may be duplicated or conflicted |
 
 ## Tools
 
@@ -61,6 +62,7 @@ dsh web
 - `plugin_install_guard`: read-only preflight for multi-repository installs.
 - `plugin_usage_audit`: local session usage audit.
 - `plugin_landscape`: installed/community relation graph and usage tiers.
+- `plugin_official_sync`: official release sync check; reports changes and duplicate/conflict findings when the local DSH is older.
 
 The agent selects the appropriate tool automatically.
 
@@ -123,6 +125,14 @@ List plugins in my web profile that declare tools but have never been used.
 
 The result is based on local finalized session logs and never uploads their contents. An active or not-yet-flushed session may not be included and is called out.
 
+### Check official release sync
+
+```text
+How far behind the official DSH am I? Will upgrading affect my installed plugins?
+```
+
+`plugin_official_sync` compares the local DSH version with the latest official release. Matching versions answer with a one-liner. When the local install is older, the report shows the release changes plus installed plugins that may be duplicated or conflicted: peer ranges excluding the new version, declared tool names appearing in the official notes, or capability keywords overlapping the changes. Findings are advisory only and never replace the install guard's verdict.
+
 ## Direct DSH questions versus doctor
 
 When you simply ask DSH to “find a plugin,” the model may offer a general suggestion from context, but it does not consistently search the community, read local package metadata, quantify overlap, or inspect Cordis registration conflicts. A multi-repository install can also proceed without a preflight.
@@ -145,6 +155,8 @@ With `dsh-plugin-doctor`, the same requests produce structured, reviewable evide
 Community search falls back in order: live GitHub, process cache, third-party registry pages, then a built-in snapshot. The response identifies the data source used.
 
 The usage audit reads only session files already flushed to disk. An active or not-yet-flushed session may be absent and is called out in the report. Corrupt artifacts are skipped and counted; runtimes without zstd support skip compressed logs without preventing the other tools from loading.
+
+The official release check reads the releases list with a process cache; when GitHub is unavailable it degrades to a stale cache or an explicit note. That degradation is advisory — it never affects `plugin_install_guard`'s fail-closed verdict.
 
 ## Optional configuration
 
@@ -174,7 +186,7 @@ pnpm run build
 node verify-boot.mjs
 ```
 
-Current verification baseline: `56` tests pass, TypeScript builds, and all six tools register and pass the smoke invocation. See [ARCHITECTURE.md](ARCHITECTURE.md) for the algorithm and data flow, and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules. Do not share one `node_modules` between Windows and WSL.
+Current verification baseline: `84` tests pass, TypeScript builds, and all seven tools register and pass the smoke invocation. See [ARCHITECTURE.md](ARCHITECTURE.md) for the algorithm and data flow, and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules. Do not share one `node_modules` between Windows and WSL.
 
 ## License
 

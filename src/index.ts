@@ -1,7 +1,8 @@
 /**
- * `dsh-plugin-doctor` — six Agent-facing tools over the DSH community plugin
+ * `dsh-plugin-doctor` — seven Agent-facing tools over the DSH community plugin
  * ecosystem: community search, similarity analysis, recommendation, multi-repo
- * install preflight, usage audit, and an installed-plugin landscape.
+ * install preflight, usage audit, an installed-plugin landscape, and official
+ * release sync.
  *
  * Adaptation note: DSH plugins are Cordis plugins — module-level `name`,
  * `inject`, schemastery `Config`, and `apply(ctx, config)` with fiber-scoped
@@ -28,9 +29,11 @@ import type { UserQuestionsLike } from './interaction.ts'
 import { analyzeInstallConflicts } from './install-check.ts'
 import { searchOfficialIssues } from './issues.ts'
 import type { OfficialIssue } from './issues.ts'
-import { readInventory, readPluginRows, readRecommendRows, toPluginRows, resolveDshHome } from './inventory.ts'
+import { readInventory, readPeerDependencies, readPluginRows, readRecommendRows, toPluginRows, resolveDshHome } from './inventory.ts'
 import { assignTiers, renderLandscape } from './landscape.ts'
 import type { PluginUsageSummary } from './landscape.ts'
+import { OfficialReleaseSource, appendBehindContent, assembleSyncStatus, detectLocalVersion, renderSyncAdvisory } from './official-sync.ts'
+import type { OfficialSyncResult } from './official-sync.ts'
 import { recommend } from './recommend.ts'
 import type { DecisionHooks } from './recommend.ts'
 import { analyze } from './similarity.ts'
@@ -179,6 +182,30 @@ function runDshPlugin(profile: string, action: { kind: 'add' | 'remove'; spec: s
   return { ok: true, detail: '' }
 }
 
+/**
+ * Probe the installed `dsh` CLI version. Mirrors {@link runDshPlugin}'s
+ * never-throw contract; the shorter timeout reflects an instant `--version`
+ * print inside an interactive tool execution.
+ */
+function probeDshVersion(): { ok: boolean; output?: string; detail?: string } {
+  const result = spawnSync('dsh', ['--version'], {
+    encoding: 'utf8',
+    timeout: 15_000,
+    // Same Windows shim rationale as runDshPlugin: post-CVE-2024-27980
+    // spawn() refuses the dsh launcher without a shell.
+    shell: process.platform === 'win32',
+  })
+  if (result.error !== undefined) {
+    const code = (result.error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return { ok: false, detail: 'dsh not found on PATH' }
+    if (code === 'ETIMEDOUT') return { ok: false, detail: 'timed out after 15s' }
+    return { ok: false, detail: result.error.message }
+  }
+  const output = (result.stdout ?? '').trim().split('\n')[0] ?? ''
+  if (result.status !== 0 || output.length === 0) return { ok: false, detail: `exit ${result.status}` }
+  return { ok: true, output }
+}
+
 /** Wire payload of `plugin_usage_audit`. */
 interface UsageAuditOutput {
   report: string
@@ -193,8 +220,11 @@ interface LandscapeOutput {
   tiers: { name: string; tier: 'core' | 'active' | 'idle' | 'review' | 'unattributed'; reason: string }[]
 }
 
+/** Wire payload of `plugin_official_sync`. */
+type OfficialSyncOutput = OfficialSyncResult
+
 /**
- * Install the six tools, install-preflight guidance, and the settings section.
+ * Install the seven tools, install-preflight guidance, and the settings section.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - deployment configuration.
  */
@@ -218,6 +248,12 @@ export function apply(ctx: Context, config: Config): void {
     order: 120,
     text: 'Before recommending or installing a plugin, including after a community search or when the user supplies repository links, let `plugin-doctor` ask whether to check the official GitHub repositories for open issues relevant to the requested capability or symptom. If the user explicitly chooses not to check, do not ask again during the current session. Present matching issue URLs and unresolved-risk context before any install command; an unavailable issue lookup is a warning, not permission to claim that no issue exists.',
   }), 'plugin-doctor.official-issues-prompt')
+
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: 'tool:plugin-official-sync',
+    order: 121,
+    text: 'When the user asks whether their DSH install is current, about official deepseek-harness releases, or about upgrade impact on installed plugins, call `plugin_official_sync` first. Present the official changes and any duplicated-or-conflicting plugins it reports before giving upgrade advice; its findings are advisory and never override a `plugin_install_guard` verdict.',
+  }), 'plugin-doctor.official-sync-prompt')
 
   let current: () => Config = () => config
   installSettingsSection(ctx, SETTINGS_NAMESPACE, Config, config, {
@@ -267,6 +303,35 @@ export function apply(ctx: Context, config: Config): void {
     if (choice !== 'check') return { issues: [], note: 'Official issue check was not completed; no issue lookup was performed.' }
     await refreshToken()
     return searchOfficialIssues({ web: ctx.get('web') as WebFetchLike | undefined, get token() { return token } }, refs, intent, exec.signal)
+  }
+
+  const syncSource = new OfficialReleaseSource({ web: ctx.get('web') as WebFetchLike | undefined, get token() { return token } })
+
+  // Shared producer for plugin_official_sync and the install-guard advisory.
+  // Comparison-only outcomes carry their one-liner; only a behind status pays
+  // for the inventory reads that feed the duplicate/conflict findings.
+  const runOfficialSync = async (profile: string, signal: AbortSignal | undefined): Promise<OfficialSyncResult> => {
+    await refreshToken()
+    const [fetched, local] = await Promise.all([
+      syncSource.latest(signal),
+      detectLocalVersion(profile, probeDshVersion),
+    ])
+    const status = assembleSyncStatus(local, fetched)
+    if (status.status !== 'behind') return status
+    const inventory = await readInventory(profile)
+    const [rows, peers, toolOwners] = await Promise.all([
+      readRecommendRows(profile, inventory.names),
+      readPeerDependencies(profile, inventory.names),
+      pluginToolMap(join(resolveDshHome(), 'profiles', profile), inventory.names),
+    ])
+    return appendBehindContent(status, {
+      profile,
+      releaseBody: fetched.release?.body ?? '',
+      installedRows: rows,
+      peers,
+      toolOwners,
+      ...(inventory.note === undefined ? {} : { inventoryNote: inventory.note }),
+    })
   }
 
   ctx.tools.register(defineTool({
@@ -572,7 +637,12 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       const sourceRefs = [...new Set(args.refs.map(ref => ref.trim()).filter(ref => ref.length > 0))]
       const issueReviewResult = await issueReview('plugin installation', sourceRefs, exec)
-      const inspections = await source.inspectInstallRefs(sourceRefs, exec.signal)
+      const [inspections, sync] = await Promise.all([
+        source.inspectInstallRefs(sourceRefs, exec.signal),
+        // The advisory must never break the guard's verdict, even if the sync
+        // path has a defect; a failure simply renders no advisory.
+        runOfficialSync('web', exec.signal).catch(() => undefined),
+      ])
       const result = analyzeInstallConflicts(inspections)
       const output: InstallGuardOutput = {
         safeToInstall: result.safeToInstall,
@@ -584,7 +654,7 @@ export function apply(ctx: Context, config: Config): void {
           refs: [...conflict.refs],
           detail: conflict.detail,
         })),
-        report: result.report + renderOfficialIssueNotice(issueReviewResult.issues, issueReviewResult.note),
+        report: result.report + renderOfficialIssueNotice(issueReviewResult.issues, issueReviewResult.note) + renderSyncAdvisory(sync),
       }
       return output
     },
@@ -729,6 +799,65 @@ export function apply(ctx: Context, config: Config): void {
       return output
     },
     presentCall: args => ({ card: 'generic', title: 'Visualize plugin landscape', kind: 'other', rawInput: args }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'plugin_official_sync',
+    description:
+      'Compare the locally installed DSH version with the latest official deepseek-harness GitHub '
+      + 'release. Matching versions answer with a one-liner; an older local install gets the official '
+      + 'release changes plus which installed plugins may be duplicated or conflicted by the new '
+      + 'version (peer-range exclusions, native tool-name takeovers, capability overlaps). Purely '
+      + 'advisory — it never installs anything and never overrides plugin_install_guard.',
+    parameters: {
+      profile: {
+        type: 'string',
+        description: 'Profile whose installs are checked. Defaults to "web".',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          status: { type: 'string', enum: ['up-to-date', 'behind', 'ahead', 'unknown'], required: true },
+          localRaw: { type: 'string' },
+          localSource: { type: 'string', enum: ['cli', 'manifest'] },
+          latestTag: { type: 'string' },
+          latestVersion: { type: 'string' },
+          publishedAt: { type: 'string' },
+          releaseUrl: { type: 'string' },
+          findings: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                kind: { type: 'string', enum: ['peer-exclusion', 'tool-takeover', 'capability-overlap'], required: true },
+                severity: { type: 'string', enum: ['warning', 'info'], required: true },
+                refs: { type: 'array', items: { type: 'string' }, required: true },
+                detail: { type: 'string', required: true },
+              },
+            },
+          },
+          releaseNotes: { type: 'string' },
+          report: { type: 'string', required: true },
+          note: { type: 'string' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: (value as OfficialSyncOutput).report }],
+    },
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const sync = await runOfficialSync(args.profile ?? 'web', exec.signal)
+      // Wire payloads carry plain mutable arrays, mirroring the other tools.
+      return {
+        ...sync,
+        findings: sync.findings.map(finding => ({ kind: finding.kind, severity: finding.severity, refs: [...finding.refs], detail: finding.detail })),
+      }
+    },
+    presentCall: args => ({ card: 'generic', title: 'Check official release sync', kind: 'other', rawInput: args }),
   }))
 
   /**

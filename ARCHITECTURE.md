@@ -37,6 +37,9 @@ plugin_recommend ──► github.ts + inventory.ts ($DSH_HOME/profiles/<p>/pack
 plugin_usage_audit ──► usage.ts ──► sessions/<cwd-slug>/session-<id>/session.jsonl.zstd (node:zlib zstd, Node ≥22.19)
                               └─► profile node_modules manifests (dsh.tools attribution) ──► zero-call plugins ──► removal suggestion
 plugin_install_guard ──► github.ts repository file inspection ──► install-check.ts ──► duplicate tool/patch ownership or incompatible peer major ──► INSTALL BLOCKED
+                                                                                     └─ (+ official-sync advisory when the local DSH is behind; never alters the verdict)
+plugin_official_sync ──► official-sync.ts ──► GitHub /releases list (first non-draft) + local `dsh --version`/manifest probe
+                              └─ behind only: inventory rows + peer ranges + tool map ──► peer-exclusion / tool-takeover / capability-overlap findings
 ```
 
 ## Multi-repository install preflight
@@ -62,6 +65,18 @@ The periodic health check promised by the roadmap is `plugin_landscape` itself (
 ## Interactive confirmation funnel (v0.2)
 
 Every spec-producing or removal-producing outcome goes through one prompt: `askChoiceFactory` (`interaction.ts`) wraps the DSH `ctx.userQuestions` seam — the same service `tool-ask-user` consumes — into a one-choice hook. The seam is detected per execution (`ctx.get('userQuestions')`), structural-typed locally so the plugin carries no extra peer dependency. Prompt dismissed, seam absent, or execution aborted → the hook resolves `undefined` and the caller degrades: branch 2 falls back to keep/remove plus a "say the word to consolidate" hint, branch 3 falls back to emitting the spec directly (the pre-v0.2 behavior). Tests inject stub hooks; `verify-boot.mjs` runs seam-less and thereby exercises the degraded paths.
+
+## Official release sync (v1.1)
+
+`plugin_official_sync` compares the locally installed DSH version with the latest published release of `deepseek-ai/deepseek-harness`. The listing endpoint (`/releases`, first non-draft entry) is authoritative because every release so far is a prerelease and `/releases/latest` therefore 404s. Results cache for 30 minutes (`RELEASES_TTL_MINUTES`); any fetch or shape failure serves the previous cached release with an explanatory note, or degrades to an explicit unavailability note on a cold miss. The local version comes from an injectable `dsh --version` probe first (15 s timeout, never throws) and falls back to the profile's installed `@deepseek-ai/dsh/package.json`. The comparator implements prerelease-aware semver precedence (`0.1.0-rc.7 < 0.1.1-rc.1 < 0.1.1-rc.2 < 0.1.1`); equal versions answer with a one-liner, a newer local build reports "ahead", and only a strictly older local install produces the full report.
+
+The behind report renders the release body (truncated at `RELEASE_BODY_CHARS` = 2000) plus three advisory finding kinds over the profile's installs:
+
+- **peer-exclusion** (warning): an installed package's peer range on `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` excludes the release version. Supported range syntax: `<`, `<=`, `>`, `>=`, `^` (with semver's ^0.x leftmost-non-zero rule), `~`, exact versions, wildcard partials (`1.x`), and `||` alternatives; an exclusive cap also rejects prereleases of its own tuple (`<0.2.0` excludes `0.2.0-rc.1`). Unparseable ranges (`workspace:*`, git refs, hyphen ranges) are counted as skipped instead of guessed, and an empty `||` branch matches everything as in npm. Deliberately omitted: node-semver's general prerelease gate, which would reject every rc candidate against ranges like `>=0.1.0-rc.2 <0.2.0` and flag this all-prerelease ecosystem on every release. Cordis peers are not checked because the release tag does not derive a cordis version.
+- **tool-takeover** (warning): a declared `dsh.tools` name appears identifier-bounded in the release notes (so `search` does not match `web_search`).
+- **capability-overlap** (info): at least two distinct shared keywords, or one keyword of five-plus characters, between the notes and a plugin's name/description/capabilities, after domain-stopword filtering. Findings cap at 10 across all kinds. The tokenizer is ASCII-only by design (matching the similarity core), so Chinese-only descriptions do not match English notes — a known limitation.
+
+`plugin_install_guard` runs the same producer in parallel and appends it as an advisory section when the conclusion is "behind"; the advisory renders at most `SYNC_ADVISORY_BULLETS` (5) finding bullets and is written into the report text only, so it cannot alter `safeToInstall`.
 
 ## Secrets
 

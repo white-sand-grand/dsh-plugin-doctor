@@ -1,7 +1,8 @@
 /**
- * `dsh-plugin-doctor` — six Agent-facing tools over the DSH community plugin
+ * `dsh-plugin-doctor` — seven Agent-facing tools over the DSH community plugin
  * ecosystem: community search, similarity analysis, recommendation, multi-repo
- * install preflight, usage audit, and an installed-plugin landscape.
+ * install preflight, usage audit, an installed-plugin landscape, and official
+ * release sync.
  *
  * Adaptation note: DSH plugins are Cordis plugins — module-level `name`,
  * `inject`, schemastery `Config`, and `apply(ctx, config)` with fiber-scoped
@@ -39,7 +40,7 @@ export interface Config {
 }
 export declare const Config: z<Config>;
 /**
- * Install the six tools, install-preflight guidance, and the settings section.
+ * Install the seven tools, install-preflight guidance, and the settings section.
  * @param ctx - registrant context carrying the tool registry.
  * @param config - deployment configuration.
  */

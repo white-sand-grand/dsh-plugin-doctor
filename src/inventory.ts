@@ -120,6 +120,42 @@ export async function readPluginRows(
   }))
 }
 
+/** One installed package's peer-dependency range for one dependency. */
+export interface PeerDependencyRow {
+  readonly pkg: string
+  readonly peer: string
+  readonly range: string
+}
+
+/**
+ * Read every installed package's `peerDependencies` ranges — the values the
+ * row readers discard. Unreadable manifests contribute nothing.
+ * @param profile - profile whose node_modules tree owns the packages.
+ * @param names - installed bundle/package names.
+ * @param env - environment mapping for home resolution (tests inject here).
+ */
+export async function readPeerDependencies(
+  profile: string,
+  names: readonly string[],
+  env: Record<string, string | undefined> = process.env,
+): Promise<PeerDependencyRow[]> {
+  const profileRoot = join(resolveDshHome(env), 'profiles', profile)
+  const perPackage = await Promise.all(names.map(async (name) => {
+    try {
+      const manifest = JSON.parse(await readFile(join(profileRoot, 'node_modules', name, 'package.json'), 'utf8')) as {
+        peerDependencies?: Record<string, unknown>
+      }
+      return Object.entries(manifest.peerDependencies ?? {})
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+        .map(([peer, range]) => ({ pkg: name, peer, range }))
+    } catch {
+      // Absent or unreadable manifest contributes no peer rows.
+      return []
+    }
+  }))
+  return perPackage.flat()
+}
+
 /** Read top-level installs and DSH plugin-shaped dependencies from aggregates. */
 export async function readRecommendRows(
   profile: string,

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { readInventory, readPluginRows, readRecommendRows, resolveDshHome, toPluginRows } from '../src/inventory.ts'
+import { readInventory, readPeerDependencies, readPluginRows, readRecommendRows, resolveDshHome, toPluginRows } from '../src/inventory.ts'
 
 describe('inventory', () => {
   it('reads dsh.profile.bundles from the profile manifest under $DSH_HOME', async () => {
@@ -65,5 +65,20 @@ describe('inventory', () => {
     const rows = await readRecommendRows('web', ['dsh-web-ui-all'], { DSH_HOME: home })
     expect(rows.map(row => row.name)).toEqual(['dsh-web-ui-all', '@linxin666/dsh-client-ui-task-board'])
     expect(rows[1]).toMatchObject({ providedBy: 'dsh-web-ui-all', description: 'Task board' })
+  })
+
+  it('reads peer-dependency ranges and skips unreadable manifests', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'dsh-rec-'))
+    const root = join(home, 'profiles', 'web', 'node_modules')
+    const readable = join(root, 'dsh-plugin-memory')
+    await mkdir(readable, { recursive: true })
+    await writeFile(join(readable, 'package.json'), JSON.stringify({
+      peerDependencies: { '@deepseek-ai/dsh-tools': '>=0.1.0-rc.2 <0.2.0', '@deepseek-ai/cordis': '>=4.0.0 <5' },
+    }))
+    const rows = await readPeerDependencies('web', ['dsh-plugin-memory', 'dsh-plugin-absent'], { DSH_HOME: home })
+    expect(rows).toEqual([
+      { pkg: 'dsh-plugin-memory', peer: '@deepseek-ai/dsh-tools', range: '>=0.1.0-rc.2 <0.2.0' },
+      { pkg: 'dsh-plugin-memory', peer: '@deepseek-ai/cordis', range: '>=4.0.0 <5' },
+    ])
   })
 })

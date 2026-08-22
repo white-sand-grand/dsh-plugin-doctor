@@ -4,10 +4,10 @@
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
-`dsh-plugin-doctor` 是 DSH 插件生态的诊断与决策工具。它可以搜索社区插件、比较功能重复、识别聚合 bundle 提供的子插件、检查批量安装冲突、审计实际使用量，并生成插件全景关系图。
+`dsh-plugin-doctor` 是 DSH 插件生态的诊断与决策工具。它可以搜索社区插件、比较功能重复、识别聚合 bundle 提供的子插件、检查批量安装冲突、审计实际使用量、生成插件全景关系图，并检查本地安装与官方发行版的差距。
 灵感来源自 claude code 的命令 "/doctor" 以及无数次下载插件造成的崩溃和冲突。
 
-当前版本：`1.0.0`。插件要求 Node.js `>=22.19`，默认只读，不会自行安装、卸载或启动 Web UI。
+当前版本：`1.1.0`。插件要求 Node.js `>=22.19`，默认只读，不会自行安装、卸载或启动 Web UI。
 
 ## 安装
 
@@ -52,8 +52,9 @@ dsh web
 | 查看实际使用情况 | 扫描本地已落盘 session 日志，按 `dsh.tools` 统计调用量、会话数和最近使用时间 |
 | 查看插件总体格局 | 生成 Mermaid 关系图，并按 `core`、`active`、`idle`、`review` 分层 |
 | 安装前了解官方已知问题 | 在搜索、推荐或收到仓库链接准备安装时，询问是否检查官方仓库的未关闭 Issue，并显示相关链接和风险 |
+| 检查本地落后官方多少 | 对比本地 DSH 版本与官方最新发行版；落后时报告发行版新改动以及可能重复或冲突的已装插件 |
 
-## 六个工具
+## 七个工具
 
 - `plugin_community_search`：社区插件搜索与过滤。
 - `plugin_similarity_analyze`：相似度、重复组和不可替代性分析。
@@ -61,6 +62,7 @@ dsh web
 - `plugin_install_guard`：批量安装预检，只读不安装。
 - `plugin_usage_audit`：本地 session 用量审计，不上传日志。
 - `plugin_landscape`：插件全景与关系图，可把社区候选加入图中。
+- `plugin_official_sync`：官方版本同步检查，本地落后时报告新改动与重复/冲突插件。
 
 Agent 会根据问题自动选择工具。
 
@@ -123,6 +125,14 @@ github:owner/plugin-c
 
 结果来自本地已落盘 session 日志，不上传内容。当前尚未结束或尚未刷盘的会话可能尚未计入，报告会明确提示。
 
+### 检查官方版本同步
+
+```text
+我的 DSH 落后官方多少了？升级会影响已装的插件吗？
+```
+
+`plugin_official_sync` 会对比本地 DSH 版本和官方最新发行版。版本一致时只回答一句；本地落后时报告发行版新增改动，并列出可能重复或冲突的已装插件：peer 依赖范围排除新版本、声明的工具名出现在官方发行说明里、能力关键词与新改动重叠。全部发现仅供参考，不会替代安装守卫的判定。
+
 ## 直接提问与使用 doctor 的区别
 
 直接对 DSH 说“帮我找个插件”时，模型通常只能根据已有上下文给出一般性建议，不能稳定地搜索社区、读取本地包元数据、量化相似度或检查 Cordis 注册冲突。安装多个仓库时也可能跳过预检。
@@ -145,6 +155,8 @@ github:owner/plugin-c
 社区搜索按以下顺序降级：实时 GitHub、进程内缓存、第三方 registry 页面、内置静态快照。结果会注明数据来源。
 
 用量审计只读取已经写入磁盘的 session 文件。当前尚未结束或尚未刷盘的会话可能不会计入，报告会明确提示。损坏文件会跳过并计数；Node 不支持 zstd 时，压缩日志会跳过，但不会阻止其他工具加载。
+
+官方版本检查按发行版列表读取并带进程内缓存；GitHub 不可用时降级为陈旧缓存或明确的不可用提示。该降级只是提示性的，绝不会影响 `plugin_install_guard` 的失败关闭判定。
 
 ## 可选配置
 
@@ -174,7 +186,7 @@ pnpm run build
 node verify-boot.mjs
 ```
 
-当前验证基线：`56` 个测试通过，TypeScript 构建通过，六个工具注册和冒烟调用通过。算法和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，贡献流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。Windows 和 WSL 不要混用同一个 `node_modules`。
+当前验证基线：`84` 个测试通过，TypeScript 构建通过，七个工具注册和冒烟调用通过。算法和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，贡献流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。Windows 和 WSL 不要混用同一个 `node_modules`。
 
 ## 许可证
 
